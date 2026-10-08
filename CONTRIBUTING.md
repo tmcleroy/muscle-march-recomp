@@ -33,8 +33,10 @@ Open an issue with:
 
 ## Building and testing
 
-[docs/BUILDING.md](docs/BUILDING.md) explains the build with your own WAD. Before a pull request
-that touches game code or the runtime:
+[docs/BUILDING.md](docs/BUILDING.md) explains the build with your own WAD. Before any pull request,
+run `tools/audit.sh`: it checks that no game files, keys or personal paths are in the repository
+(CI runs it too, and builds the engine, the game code and the launcher on Linux and macOS without
+the game). Before a pull request that touches game code or the runtime:
 
 - run `make replay-test`: with every feature off, the game must behave exactly as before;
 - if you changed a lifted function, run it under `WP_VERIFY=1` (see BUILDING.md).

@@ -10,8 +10,16 @@ endif()
 
 file(GLOB WP_DOL_SOURCES CONFIGURE_DEPENDS "${WP_GENERATED}/dol/*.cpp")
 file(GLOB_RECURSE WP_MODULE_SOURCES CONFIGURE_DEPENDS "${WP_GENERATED}/modules/*.cpp")
+file(GLOB_RECURSE WP_GAME_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp" "${CMAKE_CURRENT_SOURCE_DIR}/features/*.cpp")
 if(NOT WP_DOL_SOURCES)
-    message(STATUS "No generated code in ${WP_GENERATED}/dol: run recompiler/recomp.py to build the game")
+    # Without the game (e.g. CI): the hand-written game code still compiles, as a check, and the
+    # launcher builds.
+    message(STATUS "No generated code in ${WP_GENERATED}/dol: building only the game code check and the launcher")
+    add_library(musclemarch_game_check OBJECT ${WP_GAME_SOURCES})
+    target_include_directories(musclemarch_game_check PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src" "${CMAKE_CURRENT_SOURCE_DIR}/features")
+    target_link_libraries(musclemarch_game_check PRIVATE wp_engine)
+    target_compile_options(musclemarch_game_check PRIVATE -Wall -Wextra)
+    add_subdirectory(launcher)
     return()
 endif()
 
@@ -29,7 +37,6 @@ target_compile_options(musclemarch_code PRIVATE -Wall -Wextra -Wno-unused-label 
 add_executable(musclemarch)
 # Hand-written game code (lifted functions) and optional features. They register themselves with
 # static objects, so they are linked into the executable directly rather than through an archive.
-file(GLOB_RECURSE WP_GAME_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp" "${CMAKE_CURRENT_SOURCE_DIR}/features/*.cpp")
 if(WP_GAME_SOURCES)
     target_sources(musclemarch PRIVATE ${WP_GAME_SOURCES})
 endif()

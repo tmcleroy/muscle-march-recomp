@@ -1,0 +1,46 @@
+# Checks every push and pull request without the game: nothing from the game can be in the
+# repository, so CI can't build or run it. It audits the files (tools/audit.sh) and builds the
+# engine, the hand-written game code (lifted functions and features) and the launcher.
+# Testing the game itself (make replay-test) needs a WAD: contributors run it locally.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: tools/audit.sh
+
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-14]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Packages (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ninja-build libx11-dev libxext-dev libxrandr-dev libxcursor-dev \
+            libxi-dev libxss-dev libxtst-dev libxkbcommon-dev libwayland-dev wayland-protocols libdecor-0-dev libegl-dev \
+            libgl-dev libpulse-dev libasound2-dev libudev-dev libdbus-1-dev libpipewire-0.3-dev
+      - name: Packages (macOS)
+        if: runner.os == 'macOS'
+        run: brew install ninja
+      - name: Configure (no game)
+        run: >
+          cmake -S port -B build/ci -G Ninja -DCMAKE_BUILD_TYPE=Release -DWP_GAME=musclemarch
+          -DWP_GENERATED="$PWD/build/no-generated-code" -DCMAKE_DISABLE_FIND_PACKAGE_SDL3=TRUE
+          -DPython3_EXECUTABLE="$(command -v python3)"
+      - name: Build the engine, the game code and the launcher
+        run: cmake --build build/ci --target wp_engine musclemarch_game_check musclemarch_launcher
