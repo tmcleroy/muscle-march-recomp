@@ -1,0 +1,10 @@
+name = "Muscle March"
+id = "WMME"
+executable = "musclemarch"
+disc = "none"
+# WiiWare: tools/extract.py (repo root) unpacks the WAD contents here.
+extracted = "../../../extracted"
+dol = "main.dol"
+
+[sdk]
+os_save_context = 0x801c2720

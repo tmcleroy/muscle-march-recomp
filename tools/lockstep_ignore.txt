@@ -1,0 +1,23 @@
+# Symbols (dtk names) whose contents legitimately differ between Dolphin and the
+# port: SDK hardware/IOS bookkeeping, host timing. Game state must not be here.
+# OS
+DefaultThread
+__OSStartTime
+__OSLastInterruptTime
+# SC (SYSCONF buffer: Dolphin's file vs the port's generated one)
+ConfBuf
+# IPC / IOS
+IpcReqPtrArray
+IpcFdArray
+__responses
+# STM
+StmImDesc
+StmEhRegistered
+StmEhDesc
+# SI / EXI
+Si
+Packet
+Ecb
+TypeTime
+Type
+Control

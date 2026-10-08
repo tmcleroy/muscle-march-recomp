@@ -1,0 +1,7 @@
+object: extracted/main.dol
+hash: 65b9c0ad8843e382d82480f2d49631c96908407e
+symbols: config/WMME01/symbols.txt
+splits: config/WMME01/splits.txt
+detect_objects: true
+detect_strings: true
+write_asm: true

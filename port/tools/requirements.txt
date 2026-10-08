@@ -1,0 +1,2 @@
+ghidra-mcp-bridge @ https://github.com/bethington/ghidra-mcp/releases/download/v6.0.0/ghidra_mcp_bridge-6.0.0-py3-none-any.whl
+resvg-py

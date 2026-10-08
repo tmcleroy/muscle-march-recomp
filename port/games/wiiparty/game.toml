@@ -1,0 +1,8 @@
+name = "Wii Party"
+id = "SUPP01"
+executable = "wiiparty"
+disc = "disc/wiiparty.rvz"
+
+[sdk]
+os_save_context = 0x80138290
+setjmp = 0x801c8a1c

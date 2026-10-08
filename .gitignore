@@ -1,0 +1,34 @@
+# never commit game data or anything derived from it
+*.wad
+*.WAD
+*.app
+*.dol
+*.rel
+*.arc
+*.szs
+*.brres
+*.tpl
+*.brstm
+*.brsar
+*.dtm
+*.sav
+*.state
+extracted/
+dolphin_user/
+build/
+orig/
+trace/
+shots/
+movies/*.dtm
+.DS_Store
+__pycache__/
+# dtk-generated (auto-named) — commit once hand-curated
+config/*/symbols.txt
+config/*/splits.txt
+.venv/
+port/games/*/analysis/dol_functions.csv
+port/games/*/analysis/symbols.csv
+!port/games/wiiparty/analysis/*.csv
+
+# logs (contain the game's own debug text)
+*.log

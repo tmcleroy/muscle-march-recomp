@@ -1,0 +1,12 @@
+name
+EXIInit
+EXILock
+EXIUnlock
+EXIProbe
+EXIGetID
+OSRealModeCall
+OSLoadContext
+OSSwitchFiber
+OSReport
+OSPanic
+longjmp

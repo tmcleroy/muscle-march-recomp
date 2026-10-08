@@ -1,0 +1,52 @@
+set(WP_GENERATED "${CMAKE_SOURCE_DIR}/build/musclemarch/generated" CACHE PATH "Generated code to build")
+
+file(GLOB WP_DSP_SOURCES CONFIGURE_DEPENDS "${WP_GENERATED}/dsp/*.cpp")
+if(WP_DSP_SOURCES)
+    target_sources(wp_engine PRIVATE ${WP_DSP_SOURCES})
+    set_source_files_properties(${WP_DSP_SOURCES} PROPERTIES COMPILE_OPTIONS -O2)
+else()
+    target_sources(wp_engine PRIVATE "${CMAKE_SOURCE_DIR}/engine/src/audio/no_dsp_code.cpp")
+endif()
+
+file(GLOB WP_DOL_SOURCES CONFIGURE_DEPENDS "${WP_GENERATED}/dol/*.cpp")
+file(GLOB_RECURSE WP_MODULE_SOURCES CONFIGURE_DEPENDS "${WP_GENERATED}/modules/*.cpp")
+if(NOT WP_DOL_SOURCES)
+    message(STATUS "No generated code in ${WP_GENERATED}/dol: run recompiler/recomp.py to build the game")
+    return()
+endif()
+
+add_library(musclemarch_code STATIC game.cpp ${WP_DOL_SOURCES})
+set_source_files_properties(${WP_DOL_SOURCES} ${WP_MODULE_SOURCES} PROPERTIES COMPILE_OPTIONS ${WP_CODE_OPT})
+target_include_directories(musclemarch_code PUBLIC "${WP_GENERATED}/dol")
+if(WP_MODULE_SOURCES)
+    target_sources(musclemarch_code PRIVATE ${WP_MODULE_SOURCES})
+else()
+    target_sources(musclemarch_code PRIVATE "${CMAKE_SOURCE_DIR}/engine/src/core/no_modules.cpp")
+endif()
+target_link_libraries(musclemarch_code PUBLIC wp_engine)
+target_compile_options(musclemarch_code PRIVATE -Wall -Wextra -Wno-unused-label -Wno-unused-parameter $<$<NOT:$<CXX_COMPILER_ID:AppleClang,Clang>>:-Wno-clobbered>)
+
+add_executable(musclemarch)
+# Hand-written game code (lifted functions) and optional features. They register themselves with
+# static objects, so they are linked into the executable directly rather than through an archive.
+file(GLOB_RECURSE WP_GAME_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp" "${CMAKE_CURRENT_SOURCE_DIR}/features/*.cpp")
+if(WP_GAME_SOURCES)
+    target_sources(musclemarch PRIVATE ${WP_GAME_SOURCES})
+endif()
+target_include_directories(musclemarch PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src" "${CMAKE_CURRENT_SOURCE_DIR}/features")
+if(APPLE)
+    # ld64 resolves cycles between static archives on its own; LINK_GROUP RESCAN is GNU/MinGW only.
+    target_link_libraries(musclemarch PRIVATE wp_app musclemarch_code wp_engine)
+else()
+    target_link_libraries(musclemarch PRIVATE wp_app "$<LINK_GROUP:RESCAN,musclemarch_code,wp_engine>")
+endif()
+target_compile_options(musclemarch PRIVATE -Wall -Wextra)
+if(WIN32 AND NOT WP_CONSOLE)
+    set_target_properties(musclemarch PROPERTIES WIN32_EXECUTABLE ON)
+endif()
+if(TARGET SDL3::SDL3)
+    add_custom_command(TARGET musclemarch POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:SDL3::SDL3> $<TARGET_FILE_DIR:musclemarch>)
+endif()
+
+
+add_subdirectory(launcher)

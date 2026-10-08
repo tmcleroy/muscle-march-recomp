@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="113" height="20" role="img" aria-label="Progress: 84%">
+<title>Progress: 84%</title>
+<linearGradient id="s" x2="0" y2="100%"><stop offset="0" stop-color="#bbb" stop-opacity=".1"/><stop offset="1" stop-opacity=".1"/></linearGradient>
+<clipPath id="r"><rect width="113" height="20" rx="3" fill="#fff"/></clipPath>
+<g clip-path="url(#r)">
+<rect width="73" height="20" fill="#555555"/>
+<rect x="73" width="40" height="20" fill="#1f6fbf"/>
+<rect width="113" height="20" fill="url(#s)"/>
+</g>
+<g fill="#fff">
+<text x="36.5" y="15" fill="#010101" fill-opacity=".3" font-family="Verdana, DejaVu Sans, sans-serif" font-size="11" text-anchor="middle">Progress</text>
+<text x="36.5" y="14" font-family="Verdana, DejaVu Sans, sans-serif" font-size="11" text-anchor="middle">Progress</text>
+<text x="93.0" y="15" fill="#010101" fill-opacity=".3" font-family="Verdana, DejaVu Sans, sans-serif" font-size="11" text-anchor="middle">84%</text>
+<text x="93.0" y="14" font-family="Verdana, DejaVu Sans, sans-serif" font-size="11" text-anchor="middle">84%</text>
+</g>
+</svg>

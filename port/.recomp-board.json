@@ -1,0 +1,34 @@
+{
+  "$schema": "https://recomp.fyi/schema/v1.json",
+  "game": "Wii Party",
+  "system": "Wii",
+  "type": "recomp",
+  "original": {
+    "region": "Europe",
+    "serial": "SUPP01"
+  },
+  "project": "Wii Party Recomp",
+  "status": "playable",
+  "targets": [
+    "Windows"
+  ],
+  "approach": "Static recompilation of the PowerPC code to C++, with the game and SDK code running translated over reimplemented hardware (Direct3D 11 GPU, recompiled DSP audio, Bluetooth, IOS)",
+  "maintainers": [
+    {
+      "name": "arelkair",
+      "link": "https://github.com/arelkair"
+    }
+  ],
+  "help": [
+    "Testing on macOS",
+    "Testing on Linux",
+    "Testing the install on different PCs",
+    "Checking minigames and reporting faults"
+  ],
+  "tags": [
+    "wii",
+    "powerpc",
+    "static-recompilation"
+  ],
+  "notes": "Alpha (v0.1.2). The main executable and all 115 code modules are translated to C++ and build into a native Windows or Linux program; the game's own audio microcode is recompiled too. A full game of Board Game Island plays from start to finish, and every Free Play minigame has been played by hand, all 79 without faults. Runs at 60 fps (PAL60) at up to 6x resolution with keyboard, mouse and up to four gamepads. A launcher that updates itself builds the game from the user's own PAL or NTSC-U disc in about 10 minutes; an offline pack and a Linux AppImage are available. Next: Linux testing, real Wii Remotes and the remaining modes."
+}
