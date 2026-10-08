@@ -29,11 +29,6 @@ modest hardware, at any resolution, with any controller.
 
 ### Enhanced features
 
-| | |
-| --- | --- |
-| ![A wall ahead: POSE! above the stick guides, the windows to aim for in yellow](docs/screenshots/pose.jpg) | ![The runner ahead bursts through a wall, revealing the pose](docs/screenshots/wall-burst.jpg) |
-| ![A dash: SHAKE! above the guides, wiggle both sticks](docs/screenshots/shake.jpg) | ![The launcher: game file, key and Play](docs/screenshots/launcher-game.png) |
-
 | Feature | What it does |
 | --- | --- |
 | Dual-stick poses | Each stick moves one arm: point them the way the arms go. Poses are instant. The window each stick has to be in narrows as a stage goes on and on harder difficulties. |
@@ -60,8 +55,6 @@ modest hardware, at any resolution, with any controller.
 ## Installing
 
 Download the build for your system from the [releases page](../../releases).
-
-![The launcher's Features page: Pure, Enhanced or your own choice](docs/screenshots/launcher-features.png)
 
 ### macOS
 
@@ -128,6 +121,14 @@ Keys can be changed in `settings.ini` in your user folder. F9 saves a screenshot
   user folder (**Open folder** in the launcher), which holds the game's output from its last run.
 - **My controller isn't detected.** The launcher's **Controls** page shows what is connected
   and lets you test every button and stick.
+
+## Screenshots
+
+| | |
+| --- | --- |
+| ![A pose wall ahead: POSE! above the stick guides, the windows to aim for in yellow](docs/screenshots/pose.jpg) | ![A dash: SHAKE! above the guides, wiggle both sticks to run](docs/screenshots/shake.jpg) |
+| ![The launcher: game file, key and Play](docs/screenshots/launcher-game.png) | ![The launcher's Features page: Pure, Enhanced or your own choice](docs/screenshots/launcher-features.png) |
+| ![The launcher's Controls page: how to play with a gamepad, keyboard or Wii Remote](docs/screenshots/launcher-controls.png) | |
 
 ## Feedback and contributing
 

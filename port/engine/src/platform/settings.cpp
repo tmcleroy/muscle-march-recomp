@@ -143,6 +143,11 @@ void load(const std::string& path) {
             g_values[key] = trimmed(line.substr(equals + 1));
         }
     }
+    // Key bindings still at an earlier default become the current default (keymap::upgraded).
+    for (size_t i = 0; i < keymap::kActionCount; i++) {
+        std::string key = keymap::setting_key(i);
+        g_values[key] = keymap::upgraded(i, g_values[key]);
+    }
     write_file();
     g_revision++;
 }

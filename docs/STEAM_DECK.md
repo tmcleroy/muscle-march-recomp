@@ -4,7 +4,7 @@ Set it up once in Desktop Mode, then play from Game Mode with the Deck's control
 
 ## 1. Install (Desktop Mode)
 
-1. Hold the power button and choose **Switch to Desktop**.
+1. Switch to Desktop Mode.
 2. Download `MuscleMarch-x86_64.AppImage` from the [releases page](../../../releases) and move it
    to `~/Applications` (create the folder in Dolphin, the file manager, if needed).
 3. Right-click it → **Properties → Permissions**, tick **Is executable**, and close.

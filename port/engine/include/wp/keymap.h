@@ -75,6 +75,8 @@ struct Bindings {
 };
 
 Bindings defaults();
+// A stored binding that is an earlier default comes back as the current default.
+std::string upgraded(size_t index, const std::string& stored);
 Bindings load(const std::function<std::string(const std::string& key)>& value, std::vector<std::string>& invalid);
 
 }

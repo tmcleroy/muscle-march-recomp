@@ -195,11 +195,35 @@ Bindings defaults() {
     return result;
 }
 
+namespace {
+
+// Earlier default bindings. settings.ini stores every binding, so a value still equal to an old
+// default was never chosen by the player: it gets the current default instead.
+struct OldDefault {
+    const char* action;
+    const char* keys;
+};
+constexpr OldDefault kOldDefaults[] = {
+    {"up", "Up,A"},   {"down", "Down,D"},   {"left", "Left,S"},   {"right", "Right,W"},
+    {"pose_up", "I"}, {"pose_down", "K"},   {"pose_left", "J"},   {"pose_right", "L"},
+};
+
+}  // namespace
+
+std::string upgraded(size_t index, const std::string& stored) {
+    for (const OldDefault& old : kOldDefaults) {
+        if (std::string(kActions[index].name) == old.action && lower(trimmed(stored)) == lower(old.keys)) {
+            return kActions[index].defaults;
+        }
+    }
+    return stored;
+}
+
 Bindings load(const std::function<std::string(const std::string& key)>& value, std::vector<std::string>& invalid) {
     Bindings result;
     for (size_t i = 0; i < kActionCount; i++) {
         std::string key = setting_key(i);
-        Parsed parsed = parse(value(key));
+        Parsed parsed = parse(upgraded(i, value(key)));
         for (const std::string& name : parsed.invalid) {
             invalid.push_back(key + ": " + name);
         }
