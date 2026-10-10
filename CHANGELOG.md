@@ -5,6 +5,9 @@
 - Launcher: a **Video** page with the internal resolution (native up to 6x, 3840 x 2688), which was
   only in `settings.ini` and the F10 menu before. Changes made in the F10 menu while playing now
   show in the launcher afterwards instead of being overwritten at the next start.
+- Faster drawing at high internal resolutions: the main pixel shader no longer copies its register
+  arrays on every helper call (the title screen at 4x took about 42 ms of graphics time per frame
+  on an Apple M4, now 16-19 ms). The picture is unchanged.
 - Android (arm64, Vulkan): the game builds as an APK (`tools/release/android.sh`). There is no
   launcher on Android yet, so for now it is a build for people with a checkout and their own game
   files; see docs/BUILDING.md.
