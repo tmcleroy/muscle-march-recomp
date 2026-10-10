@@ -20,5 +20,7 @@ enable_testing()
 
 add_subdirectory(third_party)
 add_subdirectory(engine)
-add_subdirectory(tests)
+if(NOT ANDROID)
+    add_subdirectory(tests)
+endif()
 add_subdirectory(games/${WP_GAME})

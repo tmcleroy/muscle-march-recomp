@@ -1372,11 +1372,14 @@ bool present_to_window(void* window_handle, double aspect) {
     color.load_op = SDL_GPU_LOADOP_CLEAR;
     color.clear_color = {0, 0, 0, 1};
     color.store_op = SDL_GPU_STOREOP_STORE;
-    static bool logged = false;
-    if (!logged) {
-        logged = true;
+    static Uint32 logged_width = 0;
+    static Uint32 logged_height = 0;
+    if (logged_width != client_width || logged_height != client_height) {
+        logged_width = client_width;
+        logged_height = client_height;
         std::fprintf(stderr, "SDL_GPU: presenting to a %ux%u swapchain\n", client_width, client_height);
     }
+    hud::set_window_size(client_width, client_height);
     SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(cmd, &color, 1, nullptr);
     float flip[4] = {1.0f, 0, 0, 0};
     SDL_PushGPUVertexUniformData(cmd, 0, flip, sizeof flip);

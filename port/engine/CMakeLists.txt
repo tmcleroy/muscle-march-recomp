@@ -37,6 +37,7 @@ add_library(wp_engine STATIC
     src/input/input.cpp
     src/input/movie.cpp
     src/input/keymap.cpp
+    src/input/touch.cpp
     src/platform/png.cpp
     src/platform/save_backup.cpp
     src/platform/screenshot.cpp
@@ -47,6 +48,10 @@ add_library(wp_engine STATIC
     src/platform/hud.cpp
     src/platform/options_window.cpp
 )
+if(ANDROID)
+    target_sources(wp_engine PRIVATE src/platform/android.cpp)
+    target_link_libraries(wp_engine PUBLIC log)
+endif()
 if(WIN32)
     target_sources(wp_engine PRIVATE src/gpu/gx_render.cpp src/platform/video.cpp src/platform/options_render_gdi.cpp)
 else()
@@ -78,8 +83,14 @@ else()
     option(WP_FETCH_SDL3 "Download and build SDL3 when the system has none" ON)
     if(NOT SDL3_FOUND AND WP_FETCH_SDL3)
         include(FetchContent)
-        set(SDL_SHARED OFF CACHE BOOL "" FORCE)
-        set(SDL_STATIC ON CACHE BOOL "" FORCE)
+        if(ANDROID)
+            # SDL's Java half loads libSDL3.so by name (android/app/build.gradle).
+            set(SDL_SHARED ON CACHE BOOL "" FORCE)
+            set(SDL_STATIC OFF CACHE BOOL "" FORCE)
+        else()
+            set(SDL_SHARED OFF CACHE BOOL "" FORCE)
+            set(SDL_STATIC ON CACHE BOOL "" FORCE)
+        endif()
         set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
         FetchContent_Declare(sdl3
             URL https://github.com/libsdl-org/SDL/releases/download/release-3.4.16/SDL3-3.4.16.tar.gz
@@ -115,8 +126,8 @@ else()
 endif()
 if(NOT WIN32)
     if(SDL3_FOUND)
-        if(APPLE)
-            set(WP_DEFAULT_RENDERER "gpu")
+        if(APPLE OR ANDROID)
+            set(WP_DEFAULT_RENDERER "gpu")  # Metal; Vulkan on Android
         else()
             set(WP_DEFAULT_RENDERER "gl")  # SDL_GPU needs Vulkan there; untested so far
         endif()

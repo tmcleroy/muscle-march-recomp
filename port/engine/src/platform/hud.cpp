@@ -13,6 +13,8 @@ std::vector<Sprite> g_sprites;
 uint64_t g_version = 0;
 std::atomic<uint32_t> g_picture_width{0};
 std::atomic<uint32_t> g_picture_height{0};
+std::atomic<uint32_t> g_window_width{0};
+std::atomic<uint32_t> g_window_height{0};
 
 }  // namespace
 
@@ -41,6 +43,16 @@ bool take(uint64_t& version, std::vector<Sprite>& sprites) {
 void set_picture_size(uint32_t width, uint32_t height) {
     g_picture_width = width;
     g_picture_height = height;
+}
+
+void set_window_size(uint32_t width, uint32_t height) {
+    g_window_width = width;
+    g_window_height = height;
+}
+
+void window_size(uint32_t& width, uint32_t& height) {
+    width = g_window_width;
+    height = g_window_height;
 }
 
 void picture_size(uint32_t& width, uint32_t& height) {

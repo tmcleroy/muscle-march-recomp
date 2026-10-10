@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Android (arm64, Vulkan): the game builds as an APK (`tools/release/android.sh`). There is no
+  launcher on Android yet, so for now it is a build for people with a checkout and their own game
+  files; see docs/BUILDING.md.
+- Touch controls (Enhanced, on touch screens): the stick guides move to the sides of the screen
+  and are the sticks themselves, with a pause button; taps point and press A in menus.
+
 ## 0.1.0-beta.1 (unreleased)
 
 First public beta.

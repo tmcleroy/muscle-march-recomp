@@ -88,3 +88,36 @@ libdbus-1-dev libpipewire-0.3-dev`; for Windows add `g++-mingw-w64-x86-64-posix 
 
 A Steam Deck works as the Linux build machine: in Desktop Mode, `podman run` an
 `ubuntu:24.04` container with the checkout mounted, install the packages, and run the scripts in it.
+
+## Android
+
+`tools/release/android.sh` (or `make android`) builds an arm64 APK of the game on a Mac or Linux
+machine: `build/release/MuscleMarch-android.apk`. It needs the generated code (`make port`), CMake
+3.24 or newer and Ninja, a JDK 17, and the Android SDK with platform 34, build-tools and NDK 27.2
+(`ANDROID_HOME`; with Homebrew: `brew install openjdk@17 android-commandlinetools`, then
+`sdkmanager "platforms;android-34" "build-tools;34.0.0" "ndk;27.2.12479018"`). SDL3's source is
+downloaded to `port/build/deps` (its Java half is compiled into the app). The Gradle project is
+`android/`; the native half is the same CMake build as everywhere else, as `libmain.so`.
+
+There is no launcher on Android yet (docs/ROADMAP.md), so the app can't take a WAD. Until then:
+
+- `make android` (`GAME_FILES=extracted tools/release/android.sh`) makes a **development build**
+  with your own extracted game files packed in, to try on your own phone:
+  `build/release/MuscleMarch-android-with-game-DO-NOT-SHARE.apk`. It unpacks them into the app's
+  folder on the first start. It contains the game: never publish or share it.
+- Without `GAME_FILES` the APK has no game files and says where to copy them:
+  `Android/data/io.github.tmcleroy.musclemarch/files/game` on the phone's storage (the contents of
+  `extracted/`).
+
+The app's folder (`Android/data/io.github.tmcleroy.musclemarch/files`) also holds `settings.ini`
+(a first start writes one with the Enhanced preset), the saves (`nand/`) and, for testing,
+`env.txt`: one `NAME=value` per line, applied as environment variables at start (the `WP_...`
+variables above). The game's output goes to the system log: `adb logcat -s musclemarch SDL`.
+
+The APK is signed with the Android debug key unless `KEYSTORE`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`
+and `KEY_PASSWORD` name your own. Install with `adb install -r <apk>`, or copy it to the phone and
+open it (allow installing from that source).
+
+On the emulator (an arm64 image on Apple Silicon, started with `-gpu host`), `adb shell input tap`
+drives menus, and `WP_TOUCH_SCRIPT` in `env.txt` scripts several fingers at once (docs/FEATURES.md,
+`touch_controls`).

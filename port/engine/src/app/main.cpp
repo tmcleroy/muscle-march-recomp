@@ -10,6 +10,13 @@
 #include <cstring>
 #include <string>
 #include <thread>
+#include <vector>
+
+#ifdef __ANDROID__
+#include <SDL3/SDL_main.h>  // the activity calls main() under another name
+
+#include "wp/android.h"
+#endif
 
 #include "wp/gx_api.h"
 #include "wp/big_stack.h"
@@ -54,7 +61,11 @@ void report_crash(int signal) {
     wp::print_call_stack();
     wp::print_thread_stacks();
     std::fflush(stderr);
+#ifdef __ANDROID__
+    wp::android::finish_crash(signal);
+#else
     std::_Exit(128 + signal);
+#endif
 }
 #endif
 
@@ -149,6 +160,22 @@ int run(int argc, char** argv) {
 }
 
 int main(int argc, char** argv) {
+#ifdef __ANDROID__
+    static std::vector<std::string> arguments = wp::android::prepare();
+    if (arguments.empty()) {
+        return 1;
+    }
+    static std::vector<char*> pointers;
+    for (std::string& argument : arguments) {
+        pointers.push_back(argument.data());
+    }
+    pointers.push_back(nullptr);
+    argc = static_cast<int>(arguments.size());
+    argv = pointers.data();
+    for (int signal : {SIGSEGV, SIGBUS, SIGILL, SIGFPE}) {
+        wp::android::keep_system_handler(signal);
+    }
+#endif
     wp::g_argv = argv;
 #ifdef _WIN32
     SetUnhandledExceptionFilter(report_crash);
@@ -159,7 +186,8 @@ int main(int argc, char** argv) {
     std::signal(SIGILL, report_crash);
     std::signal(SIGFPE, report_crash);
     int result = 0;
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(__ANDROID__)
+    // The window lives on this thread (Cocoa's main thread; the thread SDL's activity gave us).
     std::thread([&] {
         wp::run_with_stack(size_t{512} << 20, [&] { result = run(argc, argv); });
         std::fflush(stdout);
