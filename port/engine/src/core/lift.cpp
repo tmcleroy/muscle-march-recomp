@@ -237,8 +237,14 @@ void compare_rest(const char* name, Cpu& c, const Cpu& expected, Ret ret, const 
 }  // namespace
 
 bool Group::enabled() const {
-    std::string text = settings::text(setting, environment);
-    return text.empty() || std::atoi(text.c_str()) != 0;
+    uint64_t current = settings::revision();
+    uint64_t cached = cache.load(std::memory_order_acquire);
+    if ((cached >> 32) != current) {
+        std::string text = settings::text(setting, environment);
+        cached = (current << 32) | (text.empty() || std::atoi(text.c_str()) != 0 ? 1u : 0u);
+        cache.store(cached, std::memory_order_release);
+    }
+    return (cached & 1) != 0;
 }
 
 std::set<std::string> name_list(const char* variable) {

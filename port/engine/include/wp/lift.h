@@ -24,6 +24,7 @@
 // PowerPC bit operations (rlwinm/rlwimi, IBM bit numbering), single-precision loads/stores,
 // and typed big-endian views of guest data (Field<T>, WP_FIELD).
 
+#include <atomic>
 #include <cstdint>
 #include <cstring>
 #include <initializer_list>
@@ -301,6 +302,9 @@ struct Group {
     const char* setting;
     const char* environment;
     bool enabled() const;
+    // The answer for one settings revision: every call of a lifted function asks, and looking the
+    // setting up each time (getenv walks the whole environment on Windows) cost half of the CPU thread.
+    mutable std::atomic<uint64_t> cache{0};
 };
 
 // WP_LIFT_OFF="Name1,Name2": run these functions' translated originals (for bisecting).

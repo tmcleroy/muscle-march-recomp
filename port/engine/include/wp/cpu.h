@@ -440,8 +440,18 @@ inline int quantizer_scale(uint32_t bits) {
     return scale & 0x20 ? scale - 0x40 : scale;
 }
 
+// 2^exponent for the quantizer's scales (-32..32), built from its bits. std::ldexp gives the same
+// value but is a library call, and a slow one on Windows, where it took over half of the CPU
+// thread while characters were being skinned: every paired-single load and store scales by it.
+inline float power_of_two(int exponent) {
+    uint32_t bits = static_cast<uint32_t>(exponent + 127) << 23;
+    float value;
+    std::memcpy(&value, &bits, sizeof value);
+    return value;
+}
+
 inline float dequantize(uint32_t address, uint32_t type, uint32_t scale_bits, uint32_t& size) {
-    float factor = std::ldexp(1.0f, -quantizer_scale(scale_bits));
+    float factor = power_of_two(-quantizer_scale(scale_bits));
     switch (type) {
     case 4:
         size = 1;
@@ -492,7 +502,7 @@ inline uint32_t clamp_quantized(float value, uint32_t type) {
 }
 
 inline void quantize(uint32_t address, float value, uint32_t type, uint32_t scale_bits, uint32_t& size) {
-    float scaled = value * std::ldexp(1.0f, quantizer_scale(scale_bits));
+    float scaled = value * power_of_two(quantizer_scale(scale_bits));
     switch (type) {
     case 4:
     case 6:
