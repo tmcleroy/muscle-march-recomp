@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.0-beta.3
 
 - Android (arm64, Vulkan): the game builds as an APK (`tools/release/android.sh`). There is no
   launcher on Android yet, so for now it is a build for people with a checkout and their own game
