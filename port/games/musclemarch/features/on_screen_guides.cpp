@@ -104,7 +104,7 @@ public:
         image.pixels.resize(pixels_.size());
         for (size_t i = 0; i < pixels_.size(); i++) {
             const Color& c = pixels_[i];
-            auto byte = [](float v) { return static_cast<uint32_t>(std::lround(std::clamp(v, 0.0f, 1.0f) * 255.0f)); };
+            auto byte = [](float v) { return static_cast<uint32_t>(std::clamp(v, 0.0f, 1.0f) * 255.0f + 0.5f); };
             image.pixels[i] = (byte(c.a * opacity) << 24) | (byte(c.r) << 16) | (byte(c.g) << 8) | byte(c.b);
         }
         return image;
@@ -131,27 +131,41 @@ private:
     std::vector<Color> pixels_;
 };
 
+// The distances below run for every pixel of a dial, on the game thread, so they stay clear of the
+// math library: MinGW's hypot, atan2, remainder and lround are calls into slow x87 code, which made
+// a redraw cost most of a frame on Windows (and the game then runs at half speed).
+float length(float x, float y) {
+    return std::sqrt(x * x + y * y);
+}
+
 float circle(float x, float y, float cx, float cy, float r) {
-    return std::hypot(x - cx, y - cy) - r;
+    return length(x - cx, y - cy) - r;
 }
 
 // A pie slice of radius r around `center` degrees (0 = up, clockwise), `half` degrees each side.
-float wedge(float x, float y, float cx, float cy, float r, float center, float half) {
-    float dx = x - cx;
-    float dy = y - cy;
-    float distance = std::hypot(dx, dy);
-    float angle = std::atan2(dx, -dy) * 57.29578f;
-    float off = std::fabs(std::remainder(angle - center, 360.0f));
-    float outside_angle = (off - half) * 0.017453f * distance;  // arc length past the edge
-    return std::max(distance - r, outside_angle);
-}
+struct Wedge {
+    Wedge(float cx, float cy, float r, float center, float half)
+        : cx(cx), cy(cy), r(r), axis_x(std::sin(center * 0.017453f)), axis_y(-std::cos(center * 0.017453f)), sin_half(std::sin(half * 0.017453f)),
+          cos_half(std::cos(half * 0.017453f)) {}
+
+    float operator()(float x, float y) const {
+        float dx = x - cx;
+        float dy = y - cy;
+        float along = dx * axis_x + dy * axis_y;
+        float across = std::fabs(dx * axis_y - dy * axis_x);
+        float outside_edge = across * cos_half - along * sin_half;  // distance past the nearer edge
+        return std::max(length(dx, dy) - r, outside_edge);
+    }
+
+    float cx, cy, r, axis_x, axis_y, sin_half, cos_half;
+};
 
 // A capsule from (x0, y0) to (x1, y1), `width` across.
 float segment(float x, float y, float x0, float y0, float x1, float y1, float width) {
     float vx = x1 - x0;
     float vy = y1 - y0;
     float t = std::clamp(((x - x0) * vx + (y - y0) * vy) / (vx * vx + vy * vy), 0.0f, 1.0f);
-    return std::hypot(x - (x0 + t * vx), y - (y0 + t * vy)) - width * 0.5f;
+    return length(x - (x0 + t * vx), y - (y0 + t * vy)) - width * 0.5f;
 }
 
 void dot(Canvas& canvas, float x, float y, float r, const Color& color) {
@@ -190,7 +204,7 @@ const Glyph& glyph(char c) {
 }
 
 // A word over an arrow pointing down (to the dial below), centred in a canvas.
-options::Image cue(uint32_t width, uint32_t height, const char* word, float opacity) {
+Canvas cue(uint32_t width, uint32_t height, const char* word) {
     Canvas canvas(width, height);
     float w = canvas.width();
     float h = canvas.height();
@@ -221,7 +235,7 @@ options::Image cue(uint32_t width, uint32_t height, const char* word, float opac
                     const auto& next = stroke_points[k + 1 < stroke_points.size() ? k + 1 : k];
                     float bx = starts[i] + next.first * size;
                     float by = top + next.second * size;
-                    d = std::min(d, (ax == bx && ay == by) ? std::hypot(px - ax, py - ay) - width_ * 0.6f : segment(px, py, ax, ay, bx, by, width_));
+                    d = std::min(d, (ax == bx && ay == by) ? length(px - ax, py - ay) - width_ * 0.6f : segment(px, py, ax, ay, bx, by, width_));
                 }
             }
         }
@@ -241,7 +255,7 @@ options::Image cue(uint32_t width, uint32_t height, const char* word, float opac
     };
     canvas.fill(kOutline, 0, arrow_top - outline, w, h, [&](float px, float py) { return arrow(px, py, outline); });
     canvas.fill(kTarget, 0, arrow_top - stroke, w, h, [&](float px, float py) { return arrow(px, py, stroke); });
-    return canvas.image(opacity);
+    return canvas;
 }
 
 void dial_face(Canvas& canvas, float c, float r, float line) {
@@ -251,19 +265,36 @@ void dial_face(Canvas& canvas, float c, float r, float line) {
 
 // The stick's dial; side -1 = left stick (outward = left), +1 = right stick. With a target arm,
 // the up and down windows, the one the wall needs in yellow and a marker on the rim.
+// Everything but the stick is kept per side and drawn again only when it changes: the stick moves
+// almost every frame, and all that costs is a copy and its dot.
 options::Image pose_dial(uint32_t size, int side, int target_arm, bool windows, float stick_x, float stick_y, float slice, float opacity) {
-    Canvas canvas(size, size);
-    float s = canvas.width();
+    struct Base {
+        uint32_t size = 0;
+        int target_arm = 0;
+        bool windows = false;
+        float slice = 0.0f;
+        Canvas canvas{0, 0};
+    };
+    static Base bases[2];
+    Base& base = bases[side > 0 ? 1 : 0];
+    float s = static_cast<float>(size);
     float c = s * 0.5f;
     float r = s * 0.36f;
     float line = std::max(1.5f, s * 0.022f);
+    float reach = r - s * 0.05f;
+    if (base.size == size && base.target_arm == target_arm && base.windows == windows && (!windows || base.slice == slice)) {
+        Canvas canvas = base.canvas;
+        dot(canvas, c + stick_x * reach, c + stick_y * reach, s * 0.06f, kStick);
+        return canvas.image(opacity);
+    }
+    Canvas canvas(size, size);
     dial_face(canvas, c, r, line);
     if (windows) {
         float lean = kPoseLean * static_cast<float>(side);
         float centers[2] = {lean, 180.0f - lean};  // up, down
         for (int i = 0; i < 2; i++) {
             bool hot = (i == 0 && target_arm > 0) || (i == 1 && target_arm < 0);
-            canvas.fill(hot ? kTarget : kWindow, c, c, r, [&](float x, float y) { return wedge(x, y, c, c, r - line * 1.5f, centers[i], slice * 0.5f); });
+            canvas.fill(hot ? kTarget : kWindow, c, c, r, Wedge(c, c, r - line * 1.5f, centers[i], slice * 0.5f));
         }
         if (target_arm != 0) {
             float angle = (target_arm > 0 ? centers[0] : centers[1]) * 0.017453f;
@@ -274,21 +305,27 @@ options::Image pose_dial(uint32_t size, int side, int target_arm, bool windows, 
     // The dead zone, then the stick.
     float dead = r * kStickDeadZone;
     canvas.fill(Color{1, 1, 1, 0.22f}, c, c, dead + line, [&](float x, float y) { return std::fabs(circle(x, y, c, c, dead)) - line * 0.3f; });
-    float reach = r - s * 0.05f;
+    base = Base{size, target_arm, windows, slice, canvas};
     dot(canvas, c + stick_x * reach, c + stick_y * reach, s * 0.06f, kStick);
     return canvas.image(opacity);
 }
 
 options::Image wiggle_dial(uint32_t size, float phase, float opacity) {
-    Canvas canvas(size, size);
-    float s = canvas.width();
+    static Canvas base(0, 0);  // the dial and its arrow; only the dot swings
+    float s = static_cast<float>(size);
     float c = s * 0.5f;
     float r = s * 0.36f;
     float line = std::max(1.5f, s * 0.022f);
-    dial_face(canvas, c, r, line);
     float arm = r * 0.62f;
     float width = s * 0.05f;
     float head = s * 0.09f;
+    if (base.width() == s) {
+        Canvas canvas = base;
+        dot(canvas, c + std::sin(phase) * arm, c, s * 0.06f, kStick);
+        return canvas.image(opacity);
+    }
+    Canvas canvas(size, size);
+    dial_face(canvas, c, r, line);
     canvas.fill(kTarget, c, c, arm + width, [&](float x, float y) {
         float d = segment(x, y, c - arm, c, c + arm, c, width);
         for (int side : {-1, 1}) {
@@ -299,6 +336,7 @@ options::Image wiggle_dial(uint32_t size, float phase, float opacity) {
         }
         return d;
     });
+    base = canvas;
     dot(canvas, c + std::sin(phase) * arm, c, s * 0.06f, kStick);
     return canvas.image(opacity);
 }
@@ -447,13 +485,18 @@ void update(uint32_t channel, input::Sample& sample) {
         static std::string cached_word;
         static uint32_t cached_size = 0;
         static float cached_opacity = -1.0f;
+        static Canvas cached_canvas(0, 0);  // the word is drawn once; a fade only converts it again
         static options::Image cached_cue;
         float opacity = g_guide.cue * g_guide.opacity;
-        if (cached_word != word || cached_size != size || std::fabs(cached_opacity - opacity) > 1.0f / 64) {
+        bool redraw = cached_word != word || cached_size != size;
+        if (redraw) {
             cached_word = word;
             cached_size = size;
+            cached_canvas = cue(size, cue_height, word);
+        }
+        if (redraw || std::fabs(cached_opacity - opacity) > 1.0f / 64) {
             cached_opacity = opacity;
-            cached_cue = cue(size, cue_height, word, opacity);
+            cached_cue = cached_canvas.image(opacity);
         }
         float bounce = std::fabs(std::sin(seconds * kBounceHz * 3.14159f)) * kBounce;
         float height = dial_height * kCueHeight;
