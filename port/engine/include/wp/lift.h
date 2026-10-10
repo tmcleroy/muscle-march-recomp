@@ -24,6 +24,7 @@
 // PowerPC bit operations (rlwinm/rlwimi, IBM bit numbering), single-precision loads/stores,
 // and typed big-endian views of guest data (Field<T>, WP_FIELD).
 
+#include <atomic>
 #include <cstdint>
 #include <cstring>
 #include <initializer_list>
@@ -300,6 +301,8 @@ enum class Ret { None, Int, Float, Blocking };
 struct Group {
     const char* setting;
     const char* environment;
+    // The answer for one settings revision (every lifted call asks).
+    mutable std::atomic<uint64_t> cache{~0ull};
     bool enabled() const;
 };
 
