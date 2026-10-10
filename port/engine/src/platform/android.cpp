@@ -24,6 +24,7 @@ constexpr const char* kInstalledStamp = "game/.installed";
 constexpr const char* kFirstSettings = "[features]\npreset=enhanced\n";
 
 struct sigaction g_system_handlers[NSIG];
+Setup g_setup = nullptr;
 
 // The system log takes lines; the game writes to stdout and stderr as on a computer.
 void forward_output() {
@@ -141,6 +142,10 @@ bool install_packed_game() {
 
 }  // namespace
 
+void set_setup(Setup setup) {
+    g_setup = setup;
+}
+
 std::vector<std::string> prepare() {
     forward_output();
     const char* folder = SDL_GetAndroidExternalStoragePath();
@@ -155,7 +160,14 @@ std::vector<std::string> prepare() {
     apply_environment_file();
     std::string game = std::string(folder) + "/" + kAssetFolder;
     std::error_code error;
-    if (!install_packed_game() || !std::filesystem::exists(game + "/main.dol", error)) {
+    bool present = install_packed_game() && std::filesystem::exists(game + "/main.dol", error);
+    if (!present && g_setup) {
+        if (!g_setup(game)) {
+            return {};  // the player left the first-start screen
+        }
+        present = std::filesystem::exists(game + "/main.dol", error);
+    }
+    if (!present) {
         std::string message = "This build has no game files.\n\nCopy the files extracted from your own copy of the game to\n" + game;
         SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, game::description().title, message.c_str(), nullptr);
         return {};

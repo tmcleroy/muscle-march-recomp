@@ -4,7 +4,7 @@
 # platform 34, build-tools and NDK 27.2 (ANDROID_HOME; Homebrew's android-commandlinetools is found
 # on its own).
 #
-#   tools/release/android.sh                 the app alone: it asks for game files in its folder
+#   tools/release/android.sh                 the app alone: it asks the player for their WAD and key
 #   GAME_FILES=extracted tools/release/android.sh
 #                                            a development build with your own game files packed
 #                                            in, to try on your own phone. Never share that APK.

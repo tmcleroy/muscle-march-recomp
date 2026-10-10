@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Android: on a first start the app asks for your own WAD and Wii common key and builds the game
+  files on the phone, so an APK no longer has to be built with the game files on a computer.
+
 ## 0.1.0-beta.3
 
 - Android (arm64, Vulkan): the game builds as an APK (`tools/release/android.sh`). There is no

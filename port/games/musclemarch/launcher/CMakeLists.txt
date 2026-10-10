@@ -38,6 +38,21 @@ add_custom_command(OUTPUT "${WP_LAUNCHER_FONTS}"
     VERBATIM)
 
 set(WP_UPSTREAM_LAUNCHER "${CMAKE_SOURCE_DIR}/launcher/src")
+if(ANDROID)
+    # No separate launcher there: on a first start the game app itself asks for the game file and
+    # key (src/android_setup.cpp) and builds the game files with the launcher's install code.
+    target_sources(musclemarch PRIVATE
+        src/android_setup.cpp
+        src/wad.cpp
+        src/crypto.cpp
+        src/install.cpp
+        ${WP_UPSTREAM_LAUNCHER}/ui.cpp)
+    # The generated fonts file is only known in this directory, hence a library of its own.
+    add_library(launcher_fonts STATIC "${WP_LAUNCHER_FONTS}")
+    target_include_directories(musclemarch PRIVATE src "${WP_UPSTREAM_LAUNCHER}")
+    target_link_libraries(musclemarch PRIVATE launcher_imgui launcher_fonts)
+    return()
+endif()
 add_executable(musclemarch_launcher
     src/main.cpp
     src/app.cpp

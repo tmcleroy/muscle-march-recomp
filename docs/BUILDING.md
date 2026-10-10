@@ -99,15 +99,15 @@ machine: `build/release/MuscleMarch-android.apk`. It needs the generated code (`
 downloaded to `port/build/deps` (its Java half is compiled into the app). The Gradle project is
 `android/`; the native half is the same CMake build as everywhere else, as `libmain.so`.
 
-There is no launcher on Android yet (docs/ROADMAP.md), so the app can't take a WAD. Until then:
+On a first start the app asks for the player's own WAD and Wii common key (pasted, typed, or a
+key file) and builds the game files in its folder, as the launcher does on a computer
+(`launcher/src/android_setup.cpp`, with the launcher's `install.cpp`). The key is used once and
+not kept. This APK has no game files in it.
 
-- `make android` (`GAME_FILES=extracted tools/release/android.sh`) makes a **development build**
-  with your own extracted game files packed in, to try on your own phone:
+- `make android` (`GAME_FILES=extracted tools/release/android.sh`) instead makes a **development
+  build** with your own extracted game files packed in, which skips that screen:
   `build/release/MuscleMarch-android-with-game-DO-NOT-SHARE.apk`. It unpacks them into the app's
   folder on the first start. It contains the game: never publish or share it.
-- Without `GAME_FILES` the APK has no game files and says where to copy them:
-  `Android/data/io.github.tmcleroy.musclemarch/files/game` on the phone's storage (the contents of
-  `extracted/`).
 
 The app's folder (`Android/data/io.github.tmcleroy.musclemarch/files`) also holds `settings.ini`
 (a first start writes one with the Enhanced preset), the saves (`nand/`) and, for testing,
