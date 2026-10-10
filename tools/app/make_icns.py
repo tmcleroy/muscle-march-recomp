@@ -27,6 +27,12 @@ def png(size):
     return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", size, size, 8, 6, 0, 0, 0)) + chunk(b"IDAT", raw) + chunk(b"IEND", b"")
 
 def main():
+    if sys.argv[1] == "--android":  # launcher icons as Android resources: <folder>/mipmap-*/ic_launcher.png
+        for density, size in (("mdpi", 48), ("hdpi", 72), ("xhdpi", 96), ("xxhdpi", 144), ("xxxhdpi", 192)):
+            folder = Path(sys.argv[2]) / f"mipmap-{density}"
+            folder.mkdir(parents=True, exist_ok=True)
+            (folder / "ic_launcher.png").write_bytes(png(size))
+        return
     out = Path(sys.argv[1])
     with tempfile.TemporaryDirectory() as tmp:
         iconset = Path(tmp) / "icon.iconset"

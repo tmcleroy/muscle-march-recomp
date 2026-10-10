@@ -19,7 +19,7 @@ struct Sprite {
     float height = 0.0f;
 };
 
-constexpr size_t kMaxSprites = 4;
+constexpr size_t kMaxSprites = 8;
 
 // Replaces what is shown (at most kMaxSprites); an empty list shows nothing.
 void show(std::vector<Sprite> sprites);
@@ -29,6 +29,10 @@ bool take(uint64_t& version, std::vector<Sprite>& sprites);
 // sprites can be drawn sharp.
 void set_picture_size(uint32_t width, uint32_t height);
 void picture_size(uint32_t& width, uint32_t& height);
+// The size of what the picture was presented in (the window's drawing surface), when the renderer
+// reports it (0 otherwise): with picture_size, where the picture is in the window.
+void set_window_size(uint32_t width, uint32_t height);
+void window_size(uint32_t& width, uint32_t& height);
 // Blends the current sprites into a captured game picture (tests, WP_CAPTURE_HUD=1).
 void composite(std::vector<uint32_t>& pixels, uint32_t width, uint32_t height);
 

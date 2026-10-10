@@ -116,3 +116,9 @@ app: port
 	-python3 tools/app/make_icns.py $(APP)/Contents/Resources/icon.icns
 	codesign --force --deep -s - $(APP) 2>/dev/null || true
 	@echo "built $(APP)"
+
+# Android APK with this checkout's game files packed in, for your own phone (never to be shared;
+# docs/BUILDING.md, "Android").
+.PHONY: android
+android: port
+	GAME_FILES=$(CURDIR)/extracted tools/release/android.sh

@@ -34,6 +34,7 @@ modest hardware, at any resolution, with any controller.
 | Dual-stick poses | Each stick moves one arm: point them the way the arms go. Poses are instant. The window each stick has to be in narrows as a stage goes on and on harder difficulties. |
 | Shake by wiggling the sticks | Run by wiggling both sticks back and forth (or round and round). |
 | On-screen stick guides | Dials in the picture's side pillars show your sticks while racing; "POSE!" and the windows to aim for appear ahead of each wall, "SHAKE!" when it's time to wiggle. |
+| Touch controls | On a touch screen, the stick guides move to the sides of the screen and are the sticks: touch them to pose, rub them to run. With a pause button. |
 | Pause with Start | Start pauses a race (as X, the Wii Remote's 1 button, always does). |
 | Skip the wrist-strap screen | Leaves out the Wii Remote safety notice at start-up. |
 | Skip intro screens | The logos, notices and opening movie end on any button. |
@@ -103,6 +104,11 @@ controllers to run.
 
 Keys can be changed in `settings.ini` in your user folder. F9 saves a screenshot.
 
+On a touch screen (the Android build), the two stick guides at the sides of the screen are the
+controls: touch a dial where its stick should point (the yellow window when a wall is coming), rub
+or drum on both dials to run, and tap the corner button or use the back gesture to pause. In menus,
+tap what you want. A connected gamepad takes over and plays as above.
+
 ## Known issues
 
 - **Steam Deck / Linux performance** is sometimes uneven while it's smooth on macOS; we're still
@@ -128,7 +134,7 @@ Keys can be changed in `settings.ini` in your user folder. F9 saves a screenshot
 | --- | --- |
 | ![A pose wall ahead: POSE! above the stick guides, the windows to aim for in yellow](docs/screenshots/pose.jpg) | ![A dash: SHAKE! above the guides, wiggle both sticks to run](docs/screenshots/shake.jpg) |
 | ![The launcher: game file, key and Play](docs/screenshots/launcher-game.png) | ![The launcher's Features page: Pure, Enhanced or your own choice](docs/screenshots/launcher-features.png) |
-| ![The launcher's Controls page: how to play with a gamepad, keyboard or Wii Remote](docs/screenshots/launcher-controls.png) | |
+| ![The launcher's Controls page: how to play with a gamepad, keyboard or Wii Remote](docs/screenshots/launcher-controls.png) | ![On a phone: the stick guides are the touch controls, with a pause button in the corner](docs/screenshots/android-pose.jpg) |
 
 ## Feedback and contributing
 
