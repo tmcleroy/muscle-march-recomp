@@ -39,6 +39,7 @@
 #include "wp/game.h"
 #include "wp/gx_state.h"
 #include "wp/hud.h"
+#include "wp/log.h"
 #include "wp/memory.h"
 #include "wp/options.h"
 #include "wp/settings.h"
@@ -724,6 +725,10 @@ void push_flip(SDL_GPUCommandBuffer* cmd) {
     SDL_PushGPUVertexUniformData(cmd, 0, flip, sizeof flip);
 }
 
+uint32_t g_downloads = 0;
+double g_download_seconds = 0.0;
+uint32_t g_copies = 0;
+
 // Read a colour target back (blocking).
 bool download(SDL_GPUTexture* texture, uint32_t width, uint32_t height, std::vector<uint8_t>& bytes) {
     record_segment();
@@ -746,7 +751,10 @@ bool download(SDL_GPUTexture* texture, uint32_t width, uint32_t height, std::vec
     destination.rows_per_layer = height;
     SDL_DownloadFromGPUTexture(copy, &region, &destination);
     SDL_EndGPUCopyPass(copy);
+    auto wait_started = std::chrono::steady_clock::now();
     submit(true);
+    g_downloads++;
+    g_download_seconds += std::chrono::duration<double>(std::chrono::steady_clock::now() - wait_started).count();
     bytes.resize(static_cast<size_t>(width) * height * 4);
     void* mapped = SDL_MapGPUTransferBuffer(g_device.device, staging, false);
     std::memcpy(bytes.data(), mapped, bytes.size());
@@ -998,6 +1006,25 @@ void run_copy(const Target& target, uint32_t target_width, uint32_t target_heigh
     SDL_EndGPURenderPass(pass);
 }
 
+// Whether a copy to a texture is also written to guest memory, as the console does. That reads
+// the picture back from the graphics card and waits for it, once per copy; phones pay dearly for
+// the wait and the copies are drawn from the card's own texture either way, so Android leaves it
+// out (video.copies_to_ram or WP_COPIES_TO_RAM decides otherwise).
+bool copies_reach_ram() {
+    static const bool value = [] {
+        std::string text = settings::text("video.copies_to_ram", "WP_COPIES_TO_RAM");
+        if (!text.empty()) {
+            return std::atoi(text.c_str()) != 0;
+        }
+#ifdef __ANDROID__
+        return false;
+#else
+        return true;
+#endif
+    }();
+    return value;
+}
+
 void release_copy(CopiedTexture& entry) {
     release_target(entry.converted);
 }
@@ -1194,6 +1221,7 @@ void copy_to_texture(uint32_t address, uint32_t stride, int x, int y, int width,
         return;
     }
     record_segment();
+    g_copies++;
     CopiedTexture& entry = g_device.copies[address];
     uint32_t w = static_cast<uint32_t>(width);
     uint32_t h = static_cast<uint32_t>(height);
@@ -1210,7 +1238,9 @@ void copy_to_texture(uint32_t address, uint32_t stride, int x, int y, int width,
         }
     }
     run_copy(entry.converted, target_width, target_height, x, y, width, height, format, intensity, alpha || depth, depth, filter);
-    write_copy_to_ram(address, stride, x, y, width, height, entry.logical_width, entry.logical_height, format, intensity, alpha || depth, depth, filter);
+    if (copies_reach_ram()) {
+        write_copy_to_ram(address, stride, x, y, width, height, entry.logical_width, entry.logical_height, format, intensity, alpha || depth, depth, filter);
+    }
     entry.bytes = entry.logical_width * entry.logical_height * copy_bits(format) / 8;
     entry.guest_hash = guest_range_valid(address, entry.bytes) ? sample_hash(host(address), entry.bytes) : 0;
     dump_copy(entry);
@@ -1249,6 +1279,17 @@ bool present_frame(void* window, double) {
         return false;
     }
     submit(false);
+    if (log::enabled()) {
+        static auto report_at = std::chrono::steady_clock::now();
+        auto now = std::chrono::steady_clock::now();
+        if (now - report_at >= std::chrono::seconds(1)) {
+            log::write("copies", "%u EFB copies to textures, %u read back in %.0f ms (scale %d)", g_copies, g_downloads, g_download_seconds * 1000.0, g_scale);
+            g_copies = 0;
+            g_downloads = 0;
+            g_download_seconds = 0.0;
+            report_at = now;
+        }
+    }
     {
         std::lock_guard<std::mutex> hold(g_publish_lock);
         if (g_device.frames[g_device.frame_write].texture) {
@@ -1372,11 +1413,14 @@ bool present_to_window(void* window_handle, double aspect) {
     color.load_op = SDL_GPU_LOADOP_CLEAR;
     color.clear_color = {0, 0, 0, 1};
     color.store_op = SDL_GPU_STOREOP_STORE;
-    static bool logged = false;
-    if (!logged) {
-        logged = true;
+    static Uint32 logged_width = 0;
+    static Uint32 logged_height = 0;
+    if (logged_width != client_width || logged_height != client_height) {
+        logged_width = client_width;
+        logged_height = client_height;
         std::fprintf(stderr, "SDL_GPU: presenting to a %ux%u swapchain\n", client_width, client_height);
     }
+    hud::set_window_size(client_width, client_height);
     SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(cmd, &color, 1, nullptr);
     float flip[4] = {1.0f, 0, 0, 0};
     SDL_PushGPUVertexUniformData(cmd, 0, flip, sizeof flip);

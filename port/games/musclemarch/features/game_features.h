@@ -24,6 +24,23 @@ constexpr float kStickDeadZone = 0.5f;
 // stick_shaking.cpp
 bool stick_shaking();          // the feature is on
 
+// touch_controls.cpp
+bool touch_sticks();           // the stick guides are touch controls now (a touch screen, no gamepad)
+// Where the guides go then, in the game picture's fractions (outside 0..1: the window's margins).
+struct TouchPlacement {
+    float dial_left[2];        // left stick, right stick
+    float dial_top;
+    float dial_width;
+    float dial_height;
+    float pause_left;
+    float pause_top;
+    float pause_width;
+    float pause_height;
+};
+TouchPlacement touch_placement();
+// The sticks and the pause button take touches there; nullptr: none (not racing).
+void set_touch_layout(const TouchPlacement* place);
+
 // Wii Remote buttons that count as "any button": everything but HOME (d-pad, +, -, 1, 2, A, B,
 // and the Nunchuk's C and Z).
 constexpr uint32_t kAnyButton = 0x7F1F;

@@ -31,6 +31,7 @@
 #include "wp/options_window.h"
 #include "wp/screenshot.h"
 #include "wp/settings.h"
+#include "wp/touch.h"
 #include "wp/ui_text.h"
 
 namespace wp::video {
@@ -235,7 +236,24 @@ void handle_event(SDL_Window* window, const SDL_Event& event) {
     case SDL_EVENT_QUIT:
     case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
         std::_Exit(0);
+    case SDL_EVENT_FINGER_DOWN:
+    case SDL_EVENT_FINGER_MOTION:
+    case SDL_EVENT_FINGER_UP:
+        touch::finger(static_cast<int64_t>(event.tfinger.fingerID), event.tfinger.x, event.tfinger.y, event.type != SDL_EVENT_FINGER_UP);
+        return;
+    case SDL_EVENT_FINGER_CANCELED:
+        touch::cancel();
+        return;
+    case SDL_EVENT_KEY_UP:
+        if (event.key.scancode == SDL_SCANCODE_AC_BACK) {
+            touch::set_back(false);
+        }
+        return;
     case SDL_EVENT_KEY_DOWN: {
+        if (event.key.scancode == SDL_SCANCODE_AC_BACK) {
+            touch::set_back(true);
+            return;
+        }
         int vk = vk_for(event.key.scancode);
         bool repeat = event.key.repeat;
         if (vk == kF12 && !repeat) {
@@ -321,7 +339,30 @@ void finish_start(SDL_Window* window, SDL_GLContext context, SDL_GPUDevice* gpu 
     g_state.changed.notify_all();
 }
 
+#ifdef __ANDROID__
+// While the app is in the background it has no surface to draw on: the game waits in present().
+std::mutex g_background_lock;
+std::condition_variable g_background_changed;
+bool g_background = false;
+
+bool SDLCALL watch_lifecycle(void*, SDL_Event* event) {
+    if (event->type == SDL_EVENT_WILL_ENTER_BACKGROUND || event->type == SDL_EVENT_DID_ENTER_FOREGROUND) {
+        std::lock_guard<std::mutex> hold(g_background_lock);
+        g_background = event->type == SDL_EVENT_WILL_ENTER_BACKGROUND;
+        g_background_changed.notify_all();
+        touch::cancel();
+    }
+    return true;
+}
+#endif
+
 void window_thread(bool visible) {
+#ifdef __ANDROID__
+    SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight");
+    SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "0");  // fingers are read as fingers (wp/touch.h)
+    SDL_SetHint(SDL_HINT_ANDROID_TRAP_BACK_BUTTON, "1");
+    SDL_AddEventWatch(watch_lifecycle, nullptr);
+#endif
     if (!SDL_InitSubSystem(SDL_INIT_VIDEO)) {
         std::fprintf(stderr, "cannot open a window: %s\n", SDL_GetError());
         finish_start(nullptr, nullptr);
@@ -346,7 +387,19 @@ void window_thread(bool visible) {
     }
 #ifdef WP_RENDERER_GPU
     // The device works without a window, so headless runs render (and save frames) too.
+#ifdef __ANDROID__
+    // Phones' Vulkan drivers vary: ask only for what the renderer uses (depth clamping).
+    SDL_PropertiesID gpu_properties = SDL_CreateProperties();
+    SDL_SetBooleanProperty(gpu_properties, SDL_PROP_GPU_DEVICE_CREATE_SHADERS_SPIRV_BOOLEAN, true);
+    SDL_SetBooleanProperty(gpu_properties, SDL_PROP_GPU_DEVICE_CREATE_DEBUGMODE_BOOLEAN, std::getenv("WP_GPU_DEBUG") != nullptr);
+    SDL_SetBooleanProperty(gpu_properties, SDL_PROP_GPU_DEVICE_CREATE_FEATURE_CLIP_DISTANCE_BOOLEAN, false);
+    SDL_SetBooleanProperty(gpu_properties, SDL_PROP_GPU_DEVICE_CREATE_FEATURE_INDIRECT_DRAW_FIRST_INSTANCE_BOOLEAN, false);
+    SDL_SetBooleanProperty(gpu_properties, SDL_PROP_GPU_DEVICE_CREATE_FEATURE_ANISOTROPY_BOOLEAN, false);
+    SDL_GPUDevice* gpu = SDL_CreateGPUDeviceWithProperties(gpu_properties);
+    SDL_DestroyProperties(gpu_properties);
+#else
     SDL_GPUDevice* gpu = SDL_CreateGPUDevice(SDL_GPU_SHADERFORMAT_SPIRV | SDL_GPU_SHADERFORMAT_MSL, std::getenv("WP_GPU_DEBUG") != nullptr, nullptr);
+#endif
     if (!gpu) {
         std::fprintf(stderr, "cannot create an SDL_GPU device: %s\n", SDL_GetError());
         finish_start(nullptr, nullptr);
@@ -354,7 +407,24 @@ void window_thread(bool visible) {
     }
     SDL_Window* window = nullptr;
     if (visible) {
+#ifdef __ANDROID__
+        window = SDL_CreateWindow(window_title(0.0).c_str(), client_width, client_height, SDL_WINDOW_FULLSCREEN);  // no system bars
+        // The bars hide a moment later and the surface grows. The swapchain keeps the size it is
+        // made with (Android stretches it from then on), so it is made once the surface has
+        // settled: at the display's size, or after a second where a cutout keeps it smaller.
+        const SDL_DisplayMode* mode = window ? SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(window)) : nullptr;
+        for (int waited = 0; mode && waited < 1000; waited += 20) {
+            int width = 0;
+            int height = 0;
+            SDL_PumpEvents();
+            if (SDL_GetWindowSizeInPixels(window, &width, &height) && width == mode->w && height == mode->h) {
+                break;
+            }
+            SDL_Delay(20);
+        }
+#else
         window = SDL_CreateWindow(window_title(0.0).c_str(), client_width, client_height, SDL_WINDOW_RESIZABLE);
+#endif
         if (!window || !SDL_ClaimWindowForGPUDevice(gpu, window)) {
             std::fprintf(stderr, "cannot open a window: %s\n", SDL_GetError());
             finish_start(nullptr, nullptr, gpu);
@@ -534,7 +604,7 @@ void start() {
     g_aspect = nand::widescreen() ? kWideAspect : kStandardAspect;
     apply_interface_language();
     bool visible = std::getenv("WP_HEADLESS") == nullptr;
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(__ANDROID__)
     std::lock_guard<std::mutex> hold(g_main_request.lock);
     g_main_request.visible = visible;
     g_main_request.requested = true;
@@ -545,8 +615,9 @@ void start() {
 }
 
 void run_main_thread() {
-#ifdef __APPLE__
-    // Cocoa only lets the main thread create windows and pump events.
+#if defined(__APPLE__) || defined(__ANDROID__)
+    // Cocoa only lets the main thread create windows and pump events; on Android it is the thread
+    // SDL's activity started, which its pause and resume handling expects.
     bool visible;
     {
         std::unique_lock<std::mutex> hold(g_main_request.lock);
@@ -667,6 +738,12 @@ void save_next_frame(const char* path) {
 }
 
 void present() {
+#ifdef __ANDROID__
+    {
+        std::unique_lock<std::mutex> hold(g_background_lock);
+        g_background_changed.wait(hold, [] { return !g_background; });
+    }
+#endif
     SDL_Window* window = g_window;
 #ifdef WP_RENDERER_GPU
     static const bool saving = true;  // the frame task submits the GPU commands

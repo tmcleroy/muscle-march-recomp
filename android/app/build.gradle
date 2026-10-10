@@ -1,0 +1,80 @@
+// Android build of the Muscle March port. Run tools/release/android.sh (or `make android`) from the
+// repository root: it fetches SDL3's source, stages the icon (and, for a development build, your
+// own game files) outside the repository and passes their places as Gradle properties.
+plugins {
+    id 'com.android.application'
+}
+
+def repo = rootProject.projectDir.parentFile
+def sdlDir = project.findProperty('sdlDir') ?: "${repo}/port/build/deps/SDL3-src"
+def generatedDir = project.findProperty('generatedDir') ?: "${repo}/port/build/musclemarch/generated"
+def stagedDir = project.findProperty('stagedDir') ?: "${repo}/build/android/staged"
+def pythonPath = project.findProperty('python') ?: 'python3'
+
+android {
+    namespace 'io.github.tmcleroy.musclemarch'
+    compileSdk 34
+    ndkVersion '27.2.12479018'
+
+    defaultConfig {
+        applicationId 'io.github.tmcleroy.musclemarch'
+        minSdk 26
+        targetSdk 34
+        versionCode((project.findProperty('versionCode') ?: '1') as int)
+        versionName new File(repo, 'VERSION').text.trim()
+        externalNativeBuild {
+            cmake {
+                abiFilters 'arm64-v8a'
+                targets 'musclemarch'
+                arguments '-DWP_GAME=musclemarch', "-DWP_GENERATED=${generatedDir}", "-DFETCHCONTENT_SOURCE_DIR_SDL3=${sdlDir}",
+                          "-DPython3_EXECUTABLE=${pythonPath}", '-DANDROID_STL=c++_shared', '-DCMAKE_BUILD_TYPE=Release'
+            }
+        }
+    }
+    signingConfigs {
+        // An optional key of your own (-PkeyStore=... -PkeyStorePassword=... -PkeyAlias=... -PkeyPassword=...);
+        // without one the build is signed with the Android debug key, which is fine for sideloading.
+        release {
+            if (project.hasProperty('keyStore')) {
+                storeFile file(project.property('keyStore'))
+                storePassword project.property('keyStorePassword')
+                keyAlias project.property('keyAlias')
+                keyPassword project.property('keyPassword')
+            }
+        }
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig project.hasProperty('keyStore') ? signingConfigs.release : signingConfigs.debug
+        }
+    }
+    externalNativeBuild {
+        cmake {
+            path '../../port/CMakeLists.txt'
+            // The port's CMake files need 3.24 or newer; the build script passes the one on the PATH.
+            version project.findProperty('cmakeVersion') ?: '3.31.6'
+        }
+    }
+    sourceSets {
+        main {
+            // SDL's Java half comes straight from the SDL source the native half is built from.
+            java.srcDirs = ['src/main/java', "${sdlDir}/android-project/app/src/main/java"]
+            // Staged outside the repository: the icon, and a development build's game files.
+            res.srcDirs = ['src/main/res', "${stagedDir}/res"]
+            assets.srcDirs = ["${stagedDir}/assets"]
+        }
+    }
+    androidResources {
+        noCompress ''   // the game files are read as they are
+    }
+    packagingOptions {
+        jniLibs {
+            useLegacyPackaging true   // compressed libraries: a smaller APK to send to a phone
+        }
+    }
+    lint {
+        abortOnError false
+        checkReleaseBuilds false
+    }
+}

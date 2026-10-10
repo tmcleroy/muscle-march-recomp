@@ -7,6 +7,8 @@
 //     marker on the rim, and "POSE!" bouncing above the dial with an arrow down to it;
 //   - in a shake section (race modes 1, 2; feature stick_shaking): a left-right arrow with a dot
 //     swinging along it, and "SHAKE!" above.
+// On a touch screen (feature touch_controls) the dials are the sticks themselves: bigger, under
+// the thumbs, with a pause button in the corner (touch_controls.cpp places them).
 // The game is never changed: the dials are HUD sprites (wp/hud.h) that the renderer blends over
 // the finished picture. They are drawn here, on the game thread, from plain reads of the race
 // (race/course_query.h) and the live gamepad, at most once per displayed frame; the words are
@@ -50,6 +52,8 @@ constexpr float kFadeSeconds = 0.18f;
 constexpr double kRedrawSeconds = 1.0 / 60.0;
 constexpr float kWiggleHz = 3.0f;
 constexpr uint32_t kMaxSize = 256;      // dial images in pixels (the renderer scales them up smoothly)
+constexpr uint32_t kMaxTouchSize = 384; // ... as touch controls, which are several times larger on screen
+constexpr float kPauseOpacity = 0.75f;
 
 constexpr int kNothing = -1;
 constexpr int kRacing = 5;              // just the sticks
@@ -310,6 +314,21 @@ options::Image pose_dial(uint32_t size, int side, int target_arm, bool windows, 
     return canvas.image(opacity);
 }
 
+// The touch screen's pause button: two bars on a round panel.
+options::Image pause_button(uint32_t size, float opacity) {
+    Canvas canvas(size, size);
+    float s = static_cast<float>(size);
+    float c = s * 0.5f;
+    float r = s * 0.44f;
+    float line = std::max(1.5f, s * 0.045f);
+    dial_face(canvas, c, r, line);
+    for (float side : {-1.0f, 1.0f}) {
+        float x = c + side * s * 0.1f;
+        canvas.fill(kRim, c, c, r, [&](float px, float py) { return segment(px, py, x, c - s * 0.15f, x, c + s * 0.15f, s * 0.09f); });
+    }
+    return canvas.image(opacity);
+}
+
 options::Image wiggle_dial(uint32_t size, float phase, float opacity) {
     static Canvas base(0, 0);  // the dial and its arrow; only the dot swings
     float s = static_cast<float>(size);
@@ -374,7 +393,8 @@ int wanted() {
 
 void update(uint32_t channel, input::Sample& sample) {
     static const bool on = wp::features::enabled("on_screen_guides");
-    if (!on || channel != 0) {
+    bool touch = touch_sticks();  // then the guides are the controls, and always drawn
+    if ((!on && !touch) || channel != 0) {
         return;
     }
     Clock::time_point now = Clock::now();
@@ -386,7 +406,7 @@ void update(uint32_t channel, input::Sample& sample) {
     g_guide.last = now;
     const gamepad::State& pad = input::last_gamepad(0);
     static const bool test = std::getenv("WP_GUIDE_TEST") != nullptr;  // scripted runs: no gamepad is read
-    int want = pad.connected || test ? wanted() : kNothing;
+    int want = pad.connected || test || touch ? wanted() : kNothing;
     static const bool debug = std::getenv("WP_GUIDE_DEBUG") != nullptr;
     static int logged = -2;
     if (debug && want != logged) {
@@ -407,10 +427,15 @@ void update(uint32_t channel, input::Sample& sample) {
             g_guide.showing = want;
         }
     }
-    if (g_guide.opacity <= 0.0f) {
-        hud::show({});
-        g_guide.shown = 0;
-        return;
+    if (g_guide.opacity <= 0.0f || (touch && want == kNothing)) {
+        if (touch) {
+            set_touch_layout(nullptr);
+        }
+        if (g_guide.opacity <= 0.0f) {
+            hud::show({});
+            g_guide.shown = 0;
+            return;
+        }
     }
 
     uint32_t picture_width = 0;
@@ -421,8 +446,24 @@ void update(uint32_t channel, input::Sample& sample) {
         picture_height = 720;
     }
     float aspect = static_cast<float>(picture_width) / static_cast<float>(picture_height);
-    uint32_t size = std::clamp<uint32_t>(static_cast<uint32_t>(kPillarWidth * static_cast<float>(picture_width)), 48, kMaxSize);
+    // Where the dials go: the picture's pillars, or under the thumbs on a touch screen.
+    float dial_left[2] = {0.0f, 1.0f - kPillarWidth};
+    float dial_top = kDialTop;
+    float dial_width = kPillarWidth;
     float dial_height = kPillarWidth * aspect;  // a square, as a fraction of the picture's height
+    TouchPlacement place{};
+    if (touch) {
+        place = touch_placement();
+        dial_left[0] = place.dial_left[0];
+        dial_left[1] = place.dial_left[1];
+        dial_top = place.dial_top;
+        dial_width = place.dial_width;
+        dial_height = place.dial_height;
+        if (want != kNothing) {
+            set_touch_layout(&place);
+        }
+    }
+    uint32_t size = std::clamp<uint32_t>(static_cast<uint32_t>(dial_width * static_cast<float>(picture_width)), 48, touch ? kMaxTouchSize : kMaxSize);
     float seconds = std::chrono::duration<float>(now.time_since_epoch()).count();
     bool shaking = g_guide.showing == kShake;
     int pose = g_guide.showing >= 0 && g_guide.showing < 4 ? g_guide.showing : -1;
@@ -433,9 +474,9 @@ void update(uint32_t channel, input::Sample& sample) {
     for (int i = 0; i < 2; i++) {
         int side = i == 0 ? -1 : 1;
         hud::Sprite sprite;
-        sprite.x = i == 0 ? 0.0f : 1.0f - kPillarWidth;
-        sprite.y = kDialTop;
-        sprite.width = kPillarWidth;
+        sprite.x = dial_left[i];
+        sprite.y = dial_top;
+        sprite.width = dial_width;
         sprite.height = dial_height;
         if (shaking && g_guide.cue > 0.0f) {
             float phase = std::fmod(seconds * kWiggleHz, 1.0f) * 6.2831853f + (side > 0 ? 3.14159f : 0.0f);
@@ -502,14 +543,33 @@ void update(uint32_t channel, input::Sample& sample) {
         float height = dial_height * kCueHeight;
         for (int i = 0; i < 2; i++) {
             hud::Sprite sprite;
-            sprite.x = i == 0 ? 0.0f : 1.0f - kPillarWidth;
-            sprite.y = kDialTop - height - bounce;
-            sprite.width = kPillarWidth;
+            sprite.x = dial_left[i];
+            sprite.y = dial_top - height - bounce;
+            sprite.width = dial_width;
             sprite.height = height;
             sprite.image = cached_cue;
             mix(static_cast<uint64_t>(sprite.y * 100000.0f) + static_cast<uint64_t>(opacity * 64.0f) * 3);
             sprites.push_back(std::move(sprite));
         }
+    }
+    if (touch) {
+        static uint32_t cached_size = 0;
+        static float cached_opacity = -1.0f;
+        static options::Image cached;
+        uint32_t pause_size = std::clamp<uint32_t>(static_cast<uint32_t>(place.pause_width * static_cast<float>(picture_width)), 32, kMaxSize);
+        if (cached_size != pause_size || std::fabs(cached_opacity - g_guide.opacity) > 1.0f / 64) {
+            cached_size = pause_size;
+            cached_opacity = g_guide.opacity;
+            cached = pause_button(pause_size, g_guide.opacity * kPauseOpacity);
+        }
+        hud::Sprite sprite;
+        sprite.x = place.pause_left;
+        sprite.y = place.pause_top;
+        sprite.width = place.pause_width;
+        sprite.height = place.pause_height;
+        sprite.image = cached;
+        mix(static_cast<uint64_t>(cached_opacity * 64.0f) * 31 + pause_size);
+        sprites.push_back(std::move(sprite));
     }
     if (debug) {
         static double total = 0.0;

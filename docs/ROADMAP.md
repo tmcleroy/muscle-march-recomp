@@ -57,27 +57,32 @@ needs a native version:
 - Strap screen: resolved, same behavior as Dolphin (see dev/PROGRESS.md 2026-10-05). Dolphin boots about 100 retraces slower.
 - SDK and engine thread stacks and audio voice state differ (host timing). Game-owned data matched Dolphin through boot (frame 300). The CNT content descriptor difference (1 vs 7) was fixed by allocating ES descriptors like IOS.
 
-## Android (planned for 0.2, after the desktop beta)
+## Android
 
 Target: Android phones, distributed as an APK on the releases page (not the Play Store: it
-contains translated game code). Controls: gamepads (as on desktop) and touch controls that
-emulate the dual-analog scheme.
+contains translated game code). Controls: gamepads (as on desktop) and touch controls.
 
-1. **Guest threads on Android.** Bionic has no `getcontext`/`makecontext`/`swapcontext`, which
-   `wp::fiber` uses: add an ARM64 assembly context switch (also usable on macOS, where ucontext is
-   deprecated). Check with the golden replays.
-2. **Build.** Android NDK (arm64-v8a) + Gradle, cross-compiled on the Mac; SDL3's Android
-   project; graphics on the SDL_GPU renderer with Vulkan (the SPIR-V shaders already exist), with
-   the HUD sprites; audio and gamepads through SDL.
-3. **App structure.** One APK: a launcher activity and a game activity in its own process (Android
-   can't spawn the game as a separate program); `--play` becomes an intent.
-4. **Game file and key.** Android's document picker returns `content://` URIs: read the WAD and
-   key files through `SDL_IOStream` in `install.cpp` instead of `std::ifstream`. The built game
-   files go in the app's private storage.
-5. **Touch controls** (a feature, on by default on touch devices): two virtual sticks, left half
-   and right half of the screen, each a floating stick where the thumb lands. They feed the same
-   gamepad state as a real controller, so dual-stick poses (point each stick up or down),
-   stick shaking (wiggle both) and the on-screen guides work unchanged. Plus A, B, Home and pause
-   buttons, and tap-to-point in menus. Hidden while a gamepad is connected.
-6. **Testing.** The Android emulator (arm64, runs natively on Apple Silicon) for unattended
-   checks; the maintainer's Android phone for touch feel and performance.
+Done (docs/BUILDING.md, "Android"):
+
+- The game runs on arm64 Android 8+ with the SDL_GPU renderer on Vulkan, SDL audio and gamepads;
+  guest threads switch with a small ARM64 context switch (Android has no `swapcontext`); the app
+  pauses in the background and resumes.
+- Touch controls (feature `touch_controls`, docs/FEATURES.md): the stick guides are the sticks,
+  plus a pause button, the back gesture and tap-to-point in menus.
+- `tools/release/android.sh` builds the APK; a development build packs the builder's own game
+  files so it can be tried on a phone.
+
+Still to do before an APK can go on the releases page:
+
+1. **Launcher.** A launcher activity (the desktop launcher's pages, sized for touch) and the game
+   in its own process; `--play` becomes an intent. Until then a first start gets the Enhanced
+   preset and `settings.ini` in the app's folder is the only way to change features.
+2. **Game file and key.** Android's document picker returns `content://` URIs: read the WAD and
+   key files through `SDL_IOStream` in `install.cpp` instead of `std::ifstream`, and build the game
+   files into the app's folder as on desktop.
+3. **Testing on real phones.** So far it has run on the Android emulator (arm64, on Apple
+   Silicon); touch feel, performance and the range of phone Vulkan drivers need real devices. The
+   golden replays have not been run on Android.
+4. Smaller things: a HOME button and the options menu (F10 on desktop) on touch, 32-bit ARM and
+   x86_64 builds if anyone needs them.
+

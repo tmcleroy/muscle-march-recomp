@@ -18,6 +18,7 @@
 #include "wp/modules.h"
 #include "wp/movie.h"
 #include "wp/settings.h"
+#include "wp/touch.h"
 #include "wp/video.h"
 
 namespace wp::input {
@@ -176,13 +177,14 @@ Sample gamepad_sample(uint32_t channel, bool sideways) {
         result.buttons |= kMotionSideways;
     }
     gamepad::State pad = gamepad::poll(channel, sideways);
+    touch::Pointer finger = channel == 0 ? touch::apply(pad) : touch::Pointer{};
     if (channel < gamepad::kSlots) {
         g_last_gamepad[channel] = pad;
     }
-    result.buttons |= pad.buttons;
-    result.pointer_valid = pad.pointer_valid;
-    result.pointer_x = pad.pointer_x;
-    result.pointer_y = pad.pointer_y;
+    result.buttons |= pad.buttons | (finger.pressed ? kButtonA : 0u);
+    result.pointer_valid = finger.active ? finger.on_picture : pad.pointer_valid;
+    result.pointer_x = finger.active ? finger.x : pad.pointer_x;
+    result.pointer_y = finger.active ? finger.y : pad.pointer_y;
     result.motion_valid = pad.motion_valid;
     for (int i = 0; i < 3; i++) {
         result.accel[i] = pad.accel[i];
@@ -275,10 +277,11 @@ Sample device_sample(uint32_t channel) {
         result.buttons |= kMotionSideways;
     }
     gamepad::State pad = gamepad::poll(channel, sideways);
+    touch::Pointer finger = touch::apply(pad);
     if (channel < gamepad::kSlots) {
         g_last_gamepad[channel] = pad;
     }
-    result.buttons |= pad.buttons;
+    result.buttons |= pad.buttons | (finger.pressed ? kButtonA : 0u);
     if (pad.motion_valid) {
         result.motion_valid = true;
         for (int i = 0; i < 3; i++) {
@@ -305,7 +308,11 @@ Sample device_sample(uint32_t channel) {
         }
     }
     bool mouse_recent = now - last_mouse_move < 1000;
-    if ((mouse_recent || !pad.pointer_valid) && video::cursor_on_image(result.pointer_x, result.pointer_y)) {
+    if (finger.active) {
+        result.pointer_valid = finger.on_picture;
+        result.pointer_x = finger.x;
+        result.pointer_y = finger.y;
+    } else if ((mouse_recent || !pad.pointer_valid) && video::cursor_on_image(result.pointer_x, result.pointer_y)) {
         result.pointer_valid = true;
     } else if (pad.pointer_valid) {
         result.pointer_valid = true;

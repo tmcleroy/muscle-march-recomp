@@ -34,7 +34,13 @@ endif()
 target_link_libraries(musclemarch_code PUBLIC wp_engine)
 target_compile_options(musclemarch_code PRIVATE -Wall -Wextra -Wno-unused-label -Wno-unused-parameter $<$<NOT:$<CXX_COMPILER_ID:AppleClang,Clang>>:-Wno-clobbered>)
 
-add_executable(musclemarch)
+if(ANDROID)
+    # SDL's activity loads the game as libmain.so and calls its main().
+    add_library(musclemarch SHARED)
+    set_target_properties(musclemarch PROPERTIES OUTPUT_NAME main)
+else()
+    add_executable(musclemarch)
+endif()
 # Hand-written game code (lifted functions) and optional features. They register themselves with
 # static objects, so they are linked into the executable directly rather than through an archive.
 if(WP_GAME_SOURCES)
@@ -51,9 +57,12 @@ target_compile_options(musclemarch PRIVATE -Wall -Wextra)
 if(WIN32 AND NOT WP_CONSOLE)
     set_target_properties(musclemarch PROPERTIES WIN32_EXECUTABLE ON)
 endif()
-if(TARGET SDL3::SDL3)
+if(TARGET SDL3::SDL3 AND NOT ANDROID)
     add_custom_command(TARGET musclemarch POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:SDL3::SDL3> $<TARGET_FILE_DIR:musclemarch>)
 endif()
 
+if(ANDROID)
+    return()  # no launcher there yet (docs/ROADMAP.md)
+endif()
 
 add_subdirectory(launcher)
