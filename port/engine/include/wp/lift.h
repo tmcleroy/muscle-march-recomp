@@ -301,9 +301,10 @@ enum class Ret { None, Int, Float, Blocking };
 struct Group {
     const char* setting;
     const char* environment;
-    // The answer for one settings revision (every lifted call asks).
-    mutable std::atomic<uint64_t> cache{~0ull};
     bool enabled() const;
+    // The answer for one settings revision: every call of a lifted function asks, and looking the
+    // setting up each time (getenv walks the whole environment on Windows) cost half of the CPU thread.
+    mutable std::atomic<uint64_t> cache{0};
 };
 
 // WP_LIFT_OFF="Name1,Name2": run these functions' translated originals (for bisecting).

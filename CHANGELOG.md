@@ -7,12 +7,21 @@
   files; see docs/BUILDING.md.
 - Touch controls (Enhanced, on touch screens): the stick guides move to the sides of the screen
   and are the sticks themselves, with a pause button; taps point and press A in menus.
-- Faster: the switch for natively rewritten functions is no longer looked up in the settings on
-  every call. On Android, screen copies (the game's blur) are no longer also read back into game
-  memory, which stalled phones once per frame (`video.copies_to_ram=1` in settings.ini or
-  `WP_COPIES_TO_RAM=1` restores it; other platforms keep it).
+- Android: screen copies (the game's blur) are no longer also read back into game memory, which
+  stalled phones once per frame (`video.copies_to_ram=1` in settings.ini or `WP_COPIES_TO_RAM=1`
+  restores it; other platforms keep it).
 
-## 0.1.0-beta.1 (unreleased)
+## 0.1.0-beta.2
+
+- Windows: races no longer drop to 30 fps and half speed
+  ([#1](https://github.com/tmcleroy/muscle-march-recomp/issues/1)). The game looked a setting up
+  through the environment on every graphics call, which is slow on Windows; the on-screen stick
+  guides and part of the CPU emulation also used slow math-library calls there.
+- Key bindings saved by an earlier build that still equal an old default become the current
+  default, so W/A/S/D and the arrow keys work on existing installs. Bindings you changed are kept.
+
+## 0.1.0-beta.1
+
 
 First public beta.
 
