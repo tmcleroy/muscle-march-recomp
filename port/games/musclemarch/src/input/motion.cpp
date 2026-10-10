@@ -211,8 +211,9 @@ void side_tilt(lift::Field<uint32_t> flag, float tilt) {
 WP_LIFTED(kLifted, update_motion, "PlayerInput_UpdateMotion", Ret::None) {
     PlayerInput player;
     player.base = c.r[3];
+    static const bool debug = std::getenv("WP_MOTION_DEBUG") != nullptr;
     static bool printed = false;
-    if (!printed && std::getenv("WP_MOTION_DEBUG")) {
+    if (debug && !printed) {
         printed = true;
         std::fprintf(stderr, "motion object %08x\n", player.base);
     }
