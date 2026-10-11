@@ -26,7 +26,7 @@ struct Language {
 constexpr Language kLanguages[] = {{"auto", nullptr}, {"en", "English"},  {"de", "Deutsch"},   {"fr", "Français"},
                                    {"es", "Español"}, {"it", "Italiano"}, {"nl", "Nederlands"}};
 
-constexpr int kMaxScale = 6;
+constexpr int kMaxScale = 3;  // as gx_render_gpu.cpp
 
 constexpr const char* kBackupCounts[] = {"0", "1", "3", "5", "10", "20"};
 

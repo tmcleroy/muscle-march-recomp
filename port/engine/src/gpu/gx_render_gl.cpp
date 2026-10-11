@@ -935,7 +935,7 @@ void prepare_texture_pack() {
 
 int requested_scale() {
     static const settings::LiveNumber scale("video.scale", "WP_SCALE");
-    return std::clamp(scale(), 1, 6);
+    return std::clamp(scale(), 1, 3);  // as gx_render_gpu.cpp: kMaxScale
 }
 
 bool initialize() {

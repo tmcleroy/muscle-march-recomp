@@ -518,9 +518,13 @@ void prepare_texture_pack() {
     }
 }
 
+// Above 3x the menus, which draw many full-screen layers through the TEV shader, fall below full
+// speed even on fast graphics cards.
+constexpr int kMaxScale = 3;
+
 int requested_scale() {
     static const settings::LiveNumber scale("video.scale", "WP_SCALE");
-    return std::clamp(scale(), 1, 6);
+    return std::clamp(scale(), 1, kMaxScale);
 }
 
 bool initialize() {
