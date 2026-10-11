@@ -349,6 +349,63 @@ void fill_constants(Constants& constants, int scale) {
     }
 }
 
+TevKey tev_key(const Constants& constants, bool early_depth) {
+    TevKey key{};
+    uint32_t stages = std::min(constants.header[0], kMaxStages);
+    uint32_t indirect_stages = std::min(constants.indirect[0] & 7, 4u);
+    uint32_t fog = static_cast<uint32_t>(constants.fog_integer[0]) & 31;
+    uint32_t used_swaps = 0;
+    uint32_t* words = key.words;
+    words[0] = stages | (early_depth ? 0x100u : 0u);
+    words[1] = (constants.header[1] >> 16) & 0xFF;
+    words[2] = ((constants.header[2] >> 8) & 1) | ((constants.header[3] & 15) << 1);
+    words[3] = (fog >> 1) & 7 ? fog : 0;
+    words[4] = constants.indirect[0] & 0xF07;
+    words[5] = constants.indirect[1] & ((1u << (6 * indirect_stages)) - 1);
+    uint32_t scales_low = indirect_stages > 0 ? constants.indirect[2] & (indirect_stages > 1 ? 0xFFFFu : 0xFFu) : 0;
+    uint32_t scales_high = indirect_stages > 2 ? constants.indirect[3] & (indirect_stages > 3 ? 0xFFFFu : 0xFFu) : 0;
+    words[6] = scales_low | (scales_high << 16);
+    for (uint32_t i = 0; i < stages; i++) {
+        uint32_t ce = constants.stage[i][0] & 0xFFFFFF;
+        uint32_t ae = constants.stage[i][1] & 0xFFFFFF;
+        uint32_t order = constants.stage[i][2] & 0x3FF;
+        uint32_t ksel = constants.stage[i][3] & 0x3FF;
+        uint32_t ind = constants.tevind[i][0] & 0x1FFFFF;
+        bool konst_color = false;
+        bool konst_alpha = false;
+        for (uint32_t input = 0; input < 4; input++) {
+            konst_color |= ((ce >> (4 * input)) & 15) == 14;
+            konst_alpha |= ((ae >> (4 + 3 * input)) & 7) == 6;
+        }
+        ksel &= (konst_color ? 0x1Fu : 0u) | (konst_alpha ? 0x3E0u : 0u);
+        used_swaps |= 1u << (ae & 3);
+        if (order & 0x40) {
+            used_swaps |= 1u << ((ae >> 2) & 3);
+        } else {
+            order &= ~7u;
+            ae &= ~0xCu;
+        }
+        if (indirect_stages == 0) {
+            ind &= ~0x1FFFu;
+        }
+        uint32_t* stage = words + kTevKeyHeader + kTevKeyStage * i;
+        stage[0] = ce;
+        stage[1] = ae;
+        stage[2] = order;
+        stage[3] = ksel;
+        stage[4] = ind;
+    }
+    uint32_t swaps = 0;
+    for (uint32_t table = 0; table < 4; table++) {
+        if (used_swaps & (1u << table)) {
+            swaps |= (constants.swaps[table] & 0xFF) << (8 * table);
+        }
+    }
+    words[7] = swaps;
+    key.count = kTevKeyHeader + kTevKeyStage * stages;
+    return key;
+}
+
 AlphaTestResult alpha_test_result(uint32_t test) {
     static uint32_t cached_test = 0xFFFFFFFF;
     static AlphaTestResult cached_result{};

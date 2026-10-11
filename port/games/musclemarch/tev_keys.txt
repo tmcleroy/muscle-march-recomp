@@ -1,0 +1,18 @@
+# TEV setups the SDL_GPU renderer has a specialised pixel shader for (any other setup draws
+# with the general shader: the same picture, more work for the graphics card).
+#
+# One setup per line, in hexadecimal: the words of tev_key() in
+# port/engine/src/gpu/gx_render_common.cpp (stage count, alpha test modes, output conversion, fog
+# mode, indirect setup, swap tables, then five words per TEV stage). These are render states, not
+# game content.
+#
+# To add setups: run the game with WP_LOG_TEV_KEYS=<this file> and play through what should be
+# covered (new setups are appended), then run port/tools/gen_gpu_shaders.py and rebuild. The game
+# log's "tev" line counts the draws that still used the general shader.
+1 3f 0 0 0 0 0 e4 8fffa 8ffd0 0 0 0
+1 3f 0 0 100 0 0 e4 8f8af 8ffd0 40 0 0
+1 3c 0 0 100 0 0 e4 8f8af 8f2f0 40 0 0
+2 3f 0 0 100 0 0 e4 8fff8 8ffc0 40 0 0 8f0af 8e2f0 0 0 0
+2 3c 0 0 100 0 0 e4 8fff8 8ffc0 40 0 0 8f0af 8e2f0 0 0 0
+3 3f 0 0 100 0 0 e4 8fff8 8ffc0 40 0 0 8089f 8ff80 41 0 0 8f0af 8e2f0 0 0 0
+1 3c 0 0 100 0 0 e4 8f8ae 8f2f0 40 c 0

@@ -20,6 +20,7 @@ add_library(wp_engine STATIC
     src/gpu/custom_textures.cpp
     src/gpu/gx_state.cpp
     src/gpu/gx_render_common.cpp
+    src/gpu/tev_specialise.cpp
     src/audio/dsp.cpp
     src/audio/audio.cpp
     src/audio/audio_hle.cpp

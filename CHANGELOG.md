@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- The internal resolution goes up to 6x again (3840 x 2688, for 4K screens) on macOS, Linux and
+  Android; 3x stays the limit on Windows for now. Menus and the title screen keep full speed at
+  the higher settings: the common ways the game sets up its pixel pipeline now each have their own
+  small pixel shader instead of one general shader working the setup out for every pixel. On an
+  Apple M4 the title screen at 4x went from about 31 ms of graphics card time per frame to about
+  4 ms, and at 6x from about 68 ms to about 9 ms. The picture is unchanged.
+
 ## 0.1.0-beta.4
 
 - Launcher: a **Video** page with the internal resolution, which was only in `settings.ini` and the
