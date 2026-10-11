@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.0-beta.3
 
 - Launcher: a **Video** page with the internal resolution (native up to 6x, 3840 x 2688), which was
   only in `settings.ini` and the F10 menu before. Changes made in the F10 menu while playing now
