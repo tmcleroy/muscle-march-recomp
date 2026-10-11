@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.0-beta.4
 
 - Launcher: a **Video** page with the internal resolution, which was only in `settings.ini` and the
   F10 menu before. Changes made in the F10 menu while playing now show in the launcher afterwards
