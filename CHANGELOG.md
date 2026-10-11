@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- Launcher: a **Video** page with the internal resolution, which was only in `settings.ini` and the
+  F10 menu before. Changes made in the F10 menu while playing now show in the launcher afterwards
+  instead of being overwritten at the next start.
+- The internal resolution now stops at 3x (1920 x 1344); it went to 6x. Above 3x the menus ran
+  below full speed even on fast graphics cards. A higher saved setting is drawn at 3x.
+- Faster drawing at high internal resolutions: the main pixel shader no longer copies its register
+  arrays on every helper call. The picture is unchanged.
+
 ## 0.1.0-beta.3
 
 - Android (arm64, Vulkan): the game builds as an APK (`tools/release/android.sh`). There is no

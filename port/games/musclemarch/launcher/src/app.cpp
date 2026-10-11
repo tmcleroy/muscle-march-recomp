@@ -477,6 +477,7 @@ void App::frame() {
     maybe_install();
     if (hidden_for_game_ && !game_.running()) {
         hidden_for_game_ = false;
+        settings_.load();  // the game's own options menu (F10) may have changed them
         SDL_ShowWindow(window_);
         SDL_RaiseWindow(window_);
     }
@@ -505,7 +506,7 @@ void App::sidebar(float height) {
     ui::text("Muscle March", Font::Semibold, 17.0f, p.text);
     ImGui::SetCursorScreenPos(origin + ImVec2(px(24), px(50)));
     ui::text("Version " MUSCLE_MARCH_VERSION, Font::Regular, ui::size::kDetail, p.secondary);
-    const char* names[] = {"Game", "Features", "Controls"};
+    const char* names[] = {"Game", "Features", "Video", "Controls"};
     float top = px(100);
     float step = px(38);
     ImGuiID indicator = ImHashStr("nav-indicator");
@@ -581,6 +582,9 @@ void App::page(float width, float height) {
         break;
     case Page::Features:
         features_page(content);
+        break;
+    case Page::Video:
+        video_page(content);
         break;
     case Page::Controls:
         controllers_page(content);
@@ -834,6 +838,36 @@ void App::features_page(float width) {
         card.end();
         ui::gap(24);
     }
+}
+
+// ---- Video -------------------------------------------------------------------------------
+
+void App::video_page(float width) {
+    const ui::Palette& p = ui::palette();
+    heading("Video", "How the game is drawn. These are the same options as the game's own menu (F10 while playing).", width);
+
+    // The game draws a 640 x 448 picture times this multiple and fits the result to its window.
+    // The game takes no more than 3x (gx_render_gpu.cpp: kMaxScale).
+    constexpr int kMaxScale = 3;
+    std::vector<std::string> labels;
+    for (int scale = 1; scale <= kMaxScale; scale++) {
+        std::string size = std::to_string(640 * scale) + " x " + std::to_string(448 * scale);
+        labels.push_back(scale == 1 ? "Native: " + size : std::to_string(scale) + "x: " + size);
+    }
+    int index = std::clamp(std::atoi(settings_.get("video", "scale").c_str()), 1, kMaxScale) - 1;
+    ui::text("PICTURE", Font::Semibold, ui::size::kDetail, p.secondary);
+    ui::gap(10);
+    Card card(width);
+    row(width, "Internal resolution",
+        "Draws the 3D picture with more detail than the console did; 3x suits a 1080p screen. Higher ones ask more of the "
+        "graphics card: go back down if the game slows. Textures and text keep their original detail.",
+        200.0f, 36.0f, [&] {
+            if (ui::dropdown("##scale", labels, index, 200.0f)) {
+                settings_.set("video", "scale", std::to_string(index + 1));
+                settings_.save();
+            }
+        });
+    card.end();
 }
 
 // ---- Controls ----------------------------------------------------------------------------

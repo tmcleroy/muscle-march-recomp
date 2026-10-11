@@ -276,7 +276,11 @@ ivec4 quantized(vec4 value) {
     return ivec4(roundEven(value * 255.0));
 }
 
-ivec3 konst_color(uint sel, ivec4 k[4]) {
+// The TEV registers and constant colours are globals: as parameters every call copies the arrays.
+ivec4 r[4];
+ivec4 k[4];
+
+ivec3 konst_color(uint sel) {
     if (sel < 8u) {
         return ivec3(kFractions[sel]);
     }
@@ -291,7 +295,7 @@ ivec3 konst_color(uint sel, ivec4 k[4]) {
     return ivec3(0);
 }
 
-int konst_alpha(uint sel, ivec4 k[4]) {
+int konst_alpha(uint sel) {
     if (sel < 8u) {
         return kFractions[sel];
     }
@@ -303,7 +307,7 @@ int konst_alpha(uint sel, ivec4 k[4]) {
     return 0;
 }
 
-ivec3 color_input(uint sel, ivec4 r[4], ivec4 tex, ivec4 ras, ivec3 kc) {
+ivec3 color_input(uint sel, ivec4 tex, ivec4 ras, ivec3 kc) {
     switch (sel) {
     case 0u: return r[0].rgb;
     case 1u: return r[0].aaa;
@@ -324,7 +328,7 @@ ivec3 color_input(uint sel, ivec4 r[4], ivec4 tex, ivec4 ras, ivec3 kc) {
     }
 }
 
-int alpha_input(uint sel, ivec4 r[4], ivec4 tex, ivec4 ras, int ka) {
+int alpha_input(uint sel, ivec4 tex, ivec4 ras, int ka) {
     switch (sel) {
     case 0u: return r[0].a;
     case 1u: return r[1].a;
@@ -373,8 +377,7 @@ ivec3 compare_color(uint mode, bool eq, ivec3 a, ivec3 b, ivec3 c) {
 
 ivec4 apply_swap(ivec4 value, uint table) {
     uint order_bits = swaps[table];
-    int components[4] = int[4](value.r, value.g, value.b, value.a);
-    return ivec4(components[order_bits & 3u], components[(order_bits >> 2u) & 3u], components[(order_bits >> 4u) & 3u], components[(order_bits >> 6u) & 3u]);
+    return ivec4(value[order_bits & 3u], value[(order_bits >> 2u) & 3u], value[(order_bits >> 4u) & 3u], value[(order_bits >> 6u) & 3u]);
 }
 
 ivec3 combine(ivec3 a, ivec3 b, ivec3 c, ivec3 d, uint bias_code, bool subtract, uint scale_code) {
@@ -413,8 +416,8 @@ void main() {
         gradient_x[g] = dFdx(value);
         gradient_y[g] = dFdy(value);
     }
-    ivec4 k[4] = ivec4[4](quantized(konst[0]), quantized(konst[1]), quantized(konst[2]), quantized(konst[3]));
-    ivec4 r[4] = ivec4[4](quantized(initial[0]), quantized(initial[1]), quantized(initial[2]), quantized(initial[3]));
+    k = ivec4[4](quantized(konst[0]), quantized(konst[1]), quantized(konst[2]), quantized(konst[3]));
+    r = ivec4[4](quantized(initial[0]), quantized(initial[1]), quantized(initial[2]), quantized(initial[3]));
     ivec4 c0 = quantized(v_c0);
     ivec4 c1 = quantized(v_c1);
     uint count = header.x;
@@ -501,12 +504,12 @@ void main() {
             ras = ivec4(alphabump | (alphabump >> 5));
         }
         ras = apply_swap(ras, ae & 3u);
-        ivec3 kc = konst_color(ksel & 31u, k);
-        int ka = konst_alpha((ksel >> 5u) & 31u, k);
-        ivec3 a = color_input((ce >> 12u) & 15u, r, tex, ras, kc) & 255;
-        ivec3 b = color_input((ce >> 8u) & 15u, r, tex, ras, kc) & 255;
-        ivec3 c = color_input((ce >> 4u) & 15u, r, tex, ras, kc) & 255;
-        ivec3 d = color_input(ce & 15u, r, tex, ras, kc);
+        ivec3 kc = konst_color(ksel & 31u);
+        int ka = konst_alpha((ksel >> 5u) & 31u);
+        ivec3 a = color_input((ce >> 12u) & 15u, tex, ras, kc) & 255;
+        ivec3 b = color_input((ce >> 8u) & 15u, tex, ras, kc) & 255;
+        ivec3 c = color_input((ce >> 4u) & 15u, tex, ras, kc) & 255;
+        ivec3 d = color_input(ce & 15u, tex, ras, kc);
         uint bias_code = (ce >> 16u) & 3u;
         uint scale_code = (ce >> 20u) & 3u;
         ivec3 color;
@@ -516,10 +519,10 @@ void main() {
             color = combine(a, b, c, d, bias_code, ((ce >> 18u) & 1u) != 0u, scale_code);
         }
         color = ((ce >> 19u) & 1u) != 0u ? clamp(color, 0, 255) : clamp(color, -1024, 1023);
-        int aa = alpha_input((ae >> 13u) & 7u, r, tex, ras, ka) & 255;
-        int ab = alpha_input((ae >> 10u) & 7u, r, tex, ras, ka) & 255;
-        int ac = alpha_input((ae >> 7u) & 7u, r, tex, ras, ka) & 255;
-        int ad = alpha_input((ae >> 4u) & 7u, r, tex, ras, ka);
+        int aa = alpha_input((ae >> 13u) & 7u, tex, ras, ka) & 255;
+        int ab = alpha_input((ae >> 10u) & 7u, tex, ras, ka) & 255;
+        int ac = alpha_input((ae >> 7u) & 7u, tex, ras, ka) & 255;
+        int ad = alpha_input((ae >> 4u) & 7u, tex, ras, ka);
         uint abias_code = (ae >> 16u) & 3u;
         uint ascale_code = (ae >> 20u) & 3u;
         int alpha;
@@ -932,7 +935,7 @@ void prepare_texture_pack() {
 
 int requested_scale() {
     static const settings::LiveNumber scale("video.scale", "WP_SCALE");
-    return std::clamp(scale(), 1, 6);
+    return std::clamp(scale(), 1, 3);  // as gx_render_gpu.cpp: kMaxScale
 }
 
 bool initialize() {

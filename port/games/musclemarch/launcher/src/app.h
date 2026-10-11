@@ -20,7 +20,7 @@
 // without the launcher's window; returns the game's exit code.
 int play_directly();
 
-enum class Page { Game, Features, Controls, Count };
+enum class Page { Game, Features, Video, Controls, Count };
 
 struct Feature {
     std::string name;
@@ -73,12 +73,13 @@ private:
     void heading(const char* title, const char* intro, float width);
     void game_page(float width);
     void features_page(float width);
+    void video_page(float width);
     void controllers_page(float width);
 
     SDL_Window* window_;
     Page page_ = Page::Game;
     Ini prefs_;     // launcher.ini: the game file's location
-    Ini settings_;  // the game's settings.ini: features
+    Ini settings_;  // the game's settings.ini: features, video
 
     mutable std::mutex mutex_;
     std::string picked_;          // from the file dialog (another thread)
