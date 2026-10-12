@@ -26,7 +26,12 @@ struct Language {
 constexpr Language kLanguages[] = {{"auto", nullptr}, {"en", "English"},  {"de", "Deutsch"},   {"fr", "Français"},
                                    {"es", "Español"}, {"it", "Italiano"}, {"nl", "Nederlands"}};
 
-constexpr int kMaxScale = 3;  // as gx_render_gpu.cpp
+// As the renderer: gx_render_gpu.cpp and gx_render_gl.cpp take 6x, the Direct3D one (gx_render.cpp) 3x.
+#ifdef _WIN32
+constexpr int kMaxScale = 3;
+#else
+constexpr int kMaxScale = 6;
+#endif
 
 constexpr const char* kBackupCounts[] = {"0", "1", "3", "5", "10", "20"};
 

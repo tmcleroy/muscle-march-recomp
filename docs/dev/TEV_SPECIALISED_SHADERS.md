@@ -1,143 +1,159 @@
-# Plan: specialised TEV shaders
+# Specialised TEV shaders
 
-A plan for whoever takes this on. Nothing here is implemented yet.
+How the renderers draw the game's pixel pipeline (TEV) fast enough for internal resolutions up
+to 6x, what was measured, and what is still open.
 
-## Goal
+## What it does
 
-Let the internal resolution go above 3x again (4x to 6x, so a 4K screen gets a full-detail
-picture) with menus and the title screen at a steady 60 fps on an Apple M4 and on a Steam Deck at
-its own sensible scale. The picture must not change: deterministic replays must give the same
-frame hashes as today.
+One general pixel shader, `kTevFragment` in `port/engine/src/gpu/gx_render_gl.cpp`, interprets
+the Wii's TEV setup for every pixel: each input selection, bias, scale, compare mode, swap table
+and wrap mode is a branch on uniform bits. That arithmetic was the whole cost of menus and the
+title screen at high resolutions, because those stack many blended full-screen layers (3 to 8
+screens of pixels per frame, see below).
 
-The limit to lift is `kMaxScale = 3` in `port/engine/src/gpu/gx_render_gpu.cpp`, repeated in
-`gx_render.cpp`, `gx_render_gl.cpp`, `port/engine/src/platform/options.cpp` and the launcher
-(`port/games/musclemarch/launcher/src/app.cpp`, `video_page`).
+Now each TEV setup gets its own small shader, and the general shader is the fallback:
 
-## What is known
+- **Key.** `tev_key()` in `gx_render_common.cpp` packs everything in `Constants` that selects the
+  code path and not just a value: stage count, early depth test, alpha test modes, output
+  conversion, fog mode, indirect setup, swap tables, and per stage the colour word, alpha word,
+  order word, konst selection and indirect word. Bits that cannot matter (an unused konst
+  selection, the map of a stage without a texture, indirect bits with no indirect stages) are
+  cleared so equivalent setups share a key. Colours, konst values, texture sizes, matrices, fog
+  parameters and alpha references stay uniforms.
+- **Specialiser.** `specialise_tev()` in `tev_specialise.cpp` rewrites the general shader's own
+  text for one key: the uniforms that are part of the key become constants and the loops over
+  gradients, indirect stages and TEV stages are unrolled. A compiler then folds it down to the
+  arithmetic that setup needs (a one-stage "texture times colour" setup becomes one texture sample
+  and a multiply, with no `discard` if the alpha test always passes). Nothing is re-implemented,
+  so the specialised arithmetic cannot drift from the general shader. If the general shader
+  changes in a way the specialiser does not know, it fails loudly and the general shader is used.
+- **OpenGL renderer** (`gx_render_gl.cpp`, Linux and the Steam Deck): compiles the specialised
+  GLSL when a setup is first drawn. It needs no list of setups.
+- **SDL_GPU renderer** (`gx_render_gpu.cpp`, macOS and Android): takes precompiled shaders only,
+  so `port/tools/gen_gpu_shaders.py` builds the specialiser as a small program, runs it for every
+  key listed in `port/games/*/tev_keys.txt`, compiles each result (glslangValidator, then
+  `spirv-opt -O` to make it straight-line code, `spirv-val`, spirv-cross for Metal) and writes
+  them into `gpu_shaders.inc` with a table of keys. Keys whose shaders come out the same share
+  one. `draw()` looks the batch's key up; `tev_pipeline()` takes the shader index as part of its
+  cache key and makes the shader the first time it is used. A setup that is not listed, or a
+  shader or pipeline that cannot be made, draws with the general shader.
+- **Direct3D 11 renderer** (`gx_render.cpp`, Windows): unchanged. It has its own HLSL shader and
+  nothing here was built or run on Windows, so its limit stays 3x. It compiles HLSL at run time,
+  so the OpenGL approach would carry over.
 
-Measured for PR #4 on an Apple M4, SDL_GPU on Metal, title screen at 4x:
+`kMaxScale` is 6 for the SDL_GPU and OpenGL renderers (also in `options.cpp` and the launcher's
+`video_page`).
 
-| Variant | GPU time per frame |
-| --- | --- |
-| TEV shader before PR #4 | about 42 ms |
-| TEV shader now (register arrays as globals) | 16-19 ms |
-| A trivial pixel shader in its place | about 3 ms |
-| Draws skipped | about 2 ms |
+## The list of setups
 
-- The cost is the pixel shader's own arithmetic, not copies, the copy filter, the sampler switch
-  or the number of passes. Races are fine at the same scale; menus and the title are not. The
-  likely reason is that menus stack blended full-screen layers, so each pixel is shaded several
-  times. That layer count was not measured.
-- Within the shader, the stage loop is what remains: the code before it costs about 4 ms and the
-  code after it about 3 ms.
-- Three rewrites that kept the general shader made no gain or a loss: bounding the gradient loop
-  by the texgen count (about 48 ms), lookup tables for the input selections (about 22 ms),
-  separate variables for the registers instead of arrays (about 35 ms).
-- These timings came from temporary instrumentation that was not committed. The `fps` line in
-  `game.log` reports CPU-side drawing time only.
+`port/games/musclemarch/tev_keys.txt` has the 7 setups the game draws across the three movies in
+`movies/` (start-up, title, mode select, the story stages, "Continue?", results, the attract
+loop). No draw in those movies falls back to the general shader.
 
-## How the renderer works today
+**Not yet covered:** a manual pass through every menu and mode (options, Endless Rush, multiplayer,
+credits). Setups met there draw with the general shader: the right picture, at the old speed. To
+add them, run the game with `WP_LOG_TEV_KEYS=<path to tev_keys.txt>` and play through them (new
+setups are appended), then run `python3 port/tools/gen_gpu_shaders.py` and rebuild. The `tev` line
+in `game.log` counts draws by kind of shader, and with `WP_LOG_TEV_KEYS` the game prints every
+300 frames which keys covered the most pixels (`g` marks one drawn by the general shader).
 
-- One general pixel shader, `kTevFragment` in `port/engine/src/gpu/gx_render_gl.cpp`, interprets
-  the Wii's TEV setup per pixel. The setup arrives in the `Constants` uniform block
-  (`gx_render_common.h`): `header.x` is the stage count, `stage[16]` holds each stage's colour
-  word, alpha word, order word and konst selection, `tevind[16]` the indirect setup, `indirect`
-  the indirect stage count and texgen count, plus fog and the alpha test.
-- `main` computes gradients for all 8 texture coordinates, runs the indirect stages, then loops
-  over `count` stages. Every input selection, bias, scale, compare mode, swap table and wrap mode
-  is a branch or switch on uniform bits. Texture maps are chosen by an 8-way switch
-  (`sample_map`).
-- SDL_GPU takes precompiled shaders only. `port/tools/gen_gpu_shaders.py` turns the GLSL into
-  SPIR-V (glslangValidator) and MSL (spirv-cross) and writes the committed
-  `port/engine/src/gpu/gpu_shaders.inc`, so a normal build needs neither tool. There are two
-  variants today: `tev_fragment` and `tev_early_fragment` (early depth test).
-- Pipelines are cached in `tev_pipeline()` in `gx_render_gpu.cpp`, keyed by blend word, depth
-  state, early depth and pass. The pixel shader is picked there.
-- The OpenGL renderer compiles the same GLSL at start-up and could compile more at run time; the
-  SDL_GPU renderer, which is the default, cannot without a shader compiler in the game.
+**Why the list is in the repository:** it comes from running the game, and the repository rule is
+never to commit game data or anything derived from it, so the owner was asked and approved it
+(2026-10-11). The lines are render state words (for example "one stage, texture times vertex
+colour, alpha test greater than a reference"), not assets or code. Without the list the SDL_GPU
+renderer would need to compile shaders on the player's machine (a shader compiler in every build)
+to get the same speed; the OpenGL renderer does not use it.
 
-## Approach
+## Measurements
 
-Replace interpretation with one small shader per TEV setup, keeping the general shader as the
-fallback for any setup without one.
+Apple M4, SDL_GPU on Metal, `movies/smoke_warmup.wpm` replayed headless and unthrottled with
+`WP_LOG_GPU_TIME=1`: the game waits for the graphics card after every submit and reports the time
+waited, averaged over 60 frames. General and specialised runs were taken back to back with the
+same binary (`WP_TEV_GENERAL=1` for the general shader). Milliseconds of graphics card time per
+frame:
 
-**Specialisation key.** Everything in `Constants` that changes the code path and not just a
-value: stage count; per stage the colour word, alpha word, order word, konst selection and
-`tevind` word; the swap tables; indirect stage count, references and texgen count; alpha test
-modes; fog mode. Colours, konst values, texture sizes, matrices, fog parameters and alpha
-references stay as uniforms.
+| Screen | 3x general | 3x specialised | 4x general | 4x specialised | 6x general | 6x specialised |
+| --- | --- | --- | --- | --- | --- | --- |
+| Title screen | 18.2 | 3.1 | 31.5 | 4.3 | 68.3 | 8.8 |
+| Mode select menu | 17.4 | 2.8 | 30.6 | 4.3 | 67.4 | 8.8 |
+| Results | 16.6 | 3.0 | 29.8 | 4.6 | 63.2 | 8.7 |
+| "Continue?" | 13.0 | 2.5 | 21.7 | 3.2 | 47.7 | 7.8 |
+| Race (Warmup City) | 10.0 | 2.4 | 15.4 | 3.3 | 32.9 | 4.4 |
+| Whole movie, mean | 10.2 | 2.3 | 16.4 | 3.2 | 35.2 | 5.1 |
+| Worst second | 18.6 | 4.8 | 32.7 | 5.7 | 71.5 | 9.3 |
 
-**Generator.** A function that takes a key and writes GLSL with the same integer arithmetic as
-`kTevFragment`, with the loop unrolled and every selection resolved: only the gradients, samples
-and registers the setup uses. Write it so its output can be compared with the general shader
-(see Verification). Keep the general shader as the single description of the arithmetic; where
-the two could drift, generate both from shared pieces.
+A frame at 60 fps has 16.7 ms, so 6x now fits with room to spare where 4x did not.
 
-**Where the shaders come from** is the main design decision. In order of preference:
+The whole of `movies/autoplay_story.wpm` (every story stage, about 24 minutes of play) at 6x with
+specialised shaders: mean 5.6 ms, worst second 11.3 ms, and none of its 5.5 million draw batches
+used the general shader.
 
-1. *Build-time set, general shader as fallback.* The game is fixed, so the set of setups it uses
-   is finite. Record the keys the game uses (a `WP_LOG_TEV_KEYS` style dump during the three
-   movies and a play-through of every menu and mode), generate GLSL for each, and run them through
-   `gen_gpu_shaders.py` into `gpu_shaders.inc`. At run time `tev_pipeline()` looks the key up
-   and falls back to the general shader. No compiler ships with the game and no stutter.
-   **Ask the owner first:** the key list comes from running the game. The repository rule is
-   never to commit game data or anything derived from it. A list of render-state words is not
-   game content in the way assets or translated code are, but the owner decides. If the answer
-   is no, the keys can be recorded on the player's machine instead, which needs option 2 or 3 to
-   turn them into shaders.
-2. *Compile at run time.* Generate GLSL (or SPIR-V directly) in the game and compile it there.
-   Needs a compiler in every build (glslang plus spirv-cross, or SDL_shadercross), compiling on a
-   worker thread while the general shader draws, and a disk cache. Covers every setup without a
-   recorded list, at the cost of build size, licences to add to `THIRD_PARTY_NOTICES.md`, and
-   work on all four platforms.
-3. *Partial specialisation with no recorded list.* Precompile a fixed family of variants that
-   needs no knowledge of the game: one per stage count with the loop unrolled, with flags for
-   "no indirect stages", "no fog", "alpha test always passes". Much less work, but the
-   per-stage selections stay as uniform branches, and PR #4's experiments suggest that is where
-   the time goes. Only worth it if step 2 below shows a large gain.
+Overdraw, from the `WP_LOG_TEV_KEYS` report (triangle area before depth and alpha tests): the
+title screen, mode select and results draw 5 to 8.4 screens of pixels per frame, races 6 to 7.
+Two kinds of setup carry almost all of it: untextured vertex colour (1.9 screens every frame) and
+"texture times colour".
 
-## Steps
+OpenGL renderer on the same machine (Apple's OpenGL 4.1, itself on Metal), same movie, cut off
+after a fixed time. The number is the wait in `glFinish` at the end of each frame, which is less
+than the whole graphics card time, so compare it only with itself: mode select at 6x 13.3 ms
+general against 3.4 ms specialised, at 3x 3.8 ms against 1.9 ms; in four minutes of unthrottled
+replay at 6x the general shader got through 3,180 frames and the specialised ones 10,080.
 
-1. **Permanent GPU timing.** Add a log line with GPU time per frame (on Metal the command
-   buffer's `GPUStartTime`/`GPUEndTime`; elsewhere a blocking submit around the frame, behind an
-   environment variable). Reproduce the table above at 4x before changing anything. Take every
-   comparison back to back on an idle machine: an earlier table in PR #4 was wrong because other
-   programs were loading the graphics card.
-2. **Find the ceiling by hand.** Dump the keys the title screen and one slow menu use, with how
-   many pixels each covers. Hand-write the specialised shader for the top one or two and measure.
-   If the title screen at 4x does not come down to roughly 5 ms, stop and report: the premise is
-   wrong and the layer count or something else is the cost.
-3. **Count the setups.** Log distinct keys across the three movies in `movies/` and a manual pass
-   through every menu. This sizes option 1 (tens of shaders is fine; thousands is not).
-4. **Decide the source of shaders** with the owner, using the numbers from steps 2 and 3.
-5. **Write the generator and wire the lookup** into `tev_pipeline()`, for both the plain and the
-   early-depth variants. Extend `gen_gpu_shaders.py` rather than adding a second tool.
-6. **Blurred menus.** Menus that blur the background copy the picture back into game memory and
-   wait for the graphics card (`write_copy_to_ram`, a blocking submit). Before PR #4's shader
-   change that wait was about 28 ms per frame at 4x against 5 ms at 1x. Re-measure once the
-   shader is fast; if it still matters, do the read-back from a native-size copy.
-   `video.copies_to_ram` already turns it off, and it is off by default on Android.
-7. **Raise `kMaxScale`** to what the measurements support, restore the launcher's wording for 4K,
-   and update `CHANGELOG.md`.
+Not measured: a Steam Deck (it did not answer on the network when the build for it was ready),
+Android, Vulkan in general. The specialised SPIR-V passes `spirv-val`; only the Metal path and
+the OpenGL path on macOS were run. The Linux and Windows release builds
+compile in the release Docker image; neither was run.
 
-## Verification
+## Verification done
 
-- `make replay-test FRAMES=1` (never two at once) must match `build/golden` for `smoke_warmup`,
-  `autoplay_story` and `enhanced_story`. Memory hashes prove the game logic is untouched; frame
-  hashes prove the picture is. Also compare frame hashes old against new with `WP_SCALE=3`; check
-  first which scale the golden frame hashes were taken at.
-- A fallback check: with specialised shaders turned off by an environment variable the frame
-  hashes must be the same as with them on.
-- Log how many draws used the fallback shader. For option 1 it should be zero across the movies.
-- GPU time per frame on the title screen, the main menu, a blurred menu and a race, at 3x, 4x and
-  6x, before and after, on the M4. A Steam Deck number at 2x and 3x if the device is awake.
-- The OpenGL renderer shares the GLSL and is chosen when the game is built (the `WP_RENDERER`
-  CMake option; the code tests `WP_RENDERER_GPU`): check it still compiles and draws. Linux and Windows builds go through CI for compiling only; say plainly
-  which platforms were run.
+- Frame hashes (`WP_DET_FRAMES=1`, every 60 retraces) with specialised shaders against the general
+  shader, same binary: identical for `smoke_warmup` at 3x, 4x and 6x (SDL_GPU) and for the OpenGL
+  renderer at 3x and 6x over the part of the movie that was run.
+- The binary from before this change against the new one, memory and frame hashes: identical for
+  `smoke_warmup` and `autoplay_story` at 3x, and for all three movies at 1x
+  (`make replay-test FRAMES=1` against golden files recorded from the old binary; the golden files
+  that were in the main checkout had no frame hashes).
+- No draw in the three movies used the general shader (the counts in the `WP_LOG_GPU_TIME` line).
+- Setups the game does not use (early depth test, indirect stages with fog and a fixed
+  destination alpha, 16 stages) were only checked to specialise and compile.
+- `spirv-opt` turns `x / 255.0` into a multiplication by the reciprocal and Metal compiles with
+  fast math, so the specialised shaders are not bit-for-bit the same floating point code as the
+  general one. The frame hashes say the results after rounding to 8 bits are the same in
+  everything the movies draw.
+
+## Still open
+
+- **A play-through of every menu and mode** to complete `tev_keys.txt` (above).
+- **Windows**: specialise the HLSL shader of `gx_render.cpp` the same way, then raise its limit.
+- **Steam Deck and Android numbers**, and a run of the specialised SPIR-V on Vulkan.
+- **Blurred menus.** Menus that blur the background copy the picture back into game memory and
+  wait for the graphics card (`write_copy_to_ram`, a blocking submit); before PR #4 that wait was
+  about 28 ms per frame at 4x. The read-back is already made from a native-size copy; the wait is
+  for the rest of the frame's drawing, which is what got faster here. In `autoplay_story` at 6x
+  the 95 seconds that read back on every frame average 8.4 ms of graphics card time per frame
+  (worst 11.3 ms), against 5.4 ms for the rest, so nothing more was done. The numbers include
+  the waiting that `WP_LOG_GPU_TIME` adds; they were not taken at normal speed in a window.
+- **First use of a shader.** The SDL_GPU renderer makes a specialised shader the first time its
+  setup is drawn; on Metal that took under 1 ms each, so they are not made ahead of time. The
+  OpenGL renderer compiles and links a program on first use, which was not timed.
+
+## Tools
+
+- `WP_LOG_GPU_TIME=1`: graphics card time per frame on standard error every 60 frames (SDL_GPU:
+  every submit waits; OpenGL: `glFinish` at the end of the frame). For measuring only. Compare
+  runs back to back on an idle machine.
+- `WP_TEV_GENERAL=1`: draw everything with the general shader.
+- `WP_LOG_TEV_KEYS=file` (SDL_GPU): append every setup drawn to the file and report coverage.
+- The `fps` line in `game.log` still reports CPU-side drawing time only.
+
+One trap found on the way: SDL's Metal backend tells that a submitted command buffer has finished
+by its fence, and hands a released fence to the next command buffer. Releasing the fence right
+after waiting, on every submit, meant no command buffer was ever cleaned up and graphics memory
+grew by gigabytes a minute. `submit()` now releases each fence one submit late.
 
 ## Rules that apply
 
 - Never commit game data or anything derived from it; run `tools/audit.sh` before pushing.
 - Work in a git worktree: other sessions may be using the main checkout.
-- Stop Dolphin with SIGTERM, never SIGINT.
-- The default picture must stay exactly as it is today.
+- `make replay-test FRAMES=1` (never two at once) must match `build/golden`.
+- The default picture must stay exactly as it is.

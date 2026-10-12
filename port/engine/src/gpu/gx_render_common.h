@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <string>
 #include <vector>
 
 #include "wp/gx_render.h"
@@ -31,6 +32,17 @@ struct Constants {
     float fog[4];
     int32_t fog_integer[4];
     float fog_range[3][4];
+};
+
+// What in Constants selects the TEV shader's code path (not just a value): the stage setup, swap
+// tables, indirect setup, alpha test modes, fog mode and output conversion. One specialised shader
+// can be made per key: see tev_specialise.cpp, which reads these words.
+constexpr uint32_t kTevKeyHeader = 8;
+constexpr uint32_t kTevKeyStage = 5;
+
+struct TevKey {
+    uint32_t words[kTevKeyHeader + kTevKeyStage * kMaxStages];
+    uint32_t count;
 };
 
 struct Layout {
@@ -90,6 +102,9 @@ uint64_t hash_bytes(const uint8_t* data, size_t size);
 uint64_t sample_hash(const uint8_t* data, size_t size);
 BlendState blend_state_for(uint32_t word);
 void fill_constants(Constants& constants, int scale);
+TevKey tev_key(const Constants& constants, bool early_depth);
+// The general TEV fragment shader's GLSL with one key's setup built in; empty if that fails.
+std::string specialise_tev(const std::string& general, const uint32_t* words, uint32_t count);
 AlphaTestResult alpha_test_result(uint32_t test);
 uint32_t copy_bits(uint32_t format);
 uint32_t copy_texture_format(uint32_t format);
