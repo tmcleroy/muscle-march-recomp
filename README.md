@@ -66,6 +66,15 @@ Download the build for your system from the [releases page](../../releases).
    or key. The launcher builds the game's files from your WAD (a few seconds).
 4. Press **Play**.
 
+### Android
+
+1. Download `MuscleMarch-android.apk` on the phone and open it; allow your browser or file
+   manager to install apps when Android asks. (arm64 phones, Android 8 or newer.)
+2. Copy your WAD to the phone. On the first start, choose it, then paste or type your key, or
+   choose your key file.
+3. Press **Install and play**. The app builds the game's files from your WAD; later starts go
+   straight to the game.
+
 ### Steam Deck
 
 See [docs/STEAM_DECK.md](docs/STEAM_DECK.md) for the full walkthrough: install in Desktop Mode,

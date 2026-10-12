@@ -4,6 +4,7 @@
 
 - Android: on a first start the app asks for your own WAD and Wii common key and builds the game
   files on the phone, so an APK no longer has to be built with the game files on a computer.
+  The APK is now one of the release downloads.
 
 ## 0.1.0-beta.3
 

@@ -72,18 +72,17 @@ Done (docs/BUILDING.md, "Android"):
 - First start: the app asks for the player's WAD and Wii common key (Android's file picker, a
   paste, or typed) and builds the game files in its folder with the launcher's install code.
 - `tools/release/android.sh` builds the APK; a development build can pack the builder's own game
-  files instead.
+  files instead. `tools/release/all.sh` builds it with the other downloads, signed with the
+  release key.
 
 Still to do:
 
 1. **Settings.** There are no launcher pages on Android: a first start gets the Enhanced preset,
    and `settings.ini` in the app's folder is the only way to change features. Changing the game
    file afterwards means clearing the app's data.
-2. **Signing.** Release APKs need one lasting key (`KEYSTORE=...`); builds signed with a
-   machine's debug key can't update each other.
-3. **Testing on real phones.** So far it has run on the Android emulator (arm64, on Apple
+2. **Testing on real phones.** So far it has run on the Android emulator (arm64, on Apple
    Silicon) and one phone, where it plays below full speed; the range of phone Vulkan drivers
    needs more devices. The golden replays have not been run on Android.
-4. Smaller things: a HOME button and the options menu (F10 on desktop) on touch, 32-bit ARM and
+3. Smaller things: a HOME button and the options menu (F10 on desktop) on touch, 32-bit ARM and
    x86_64 builds if anyone needs them.
 

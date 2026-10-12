@@ -9,9 +9,14 @@
 #                                            a development build with your own game files packed
 #                                            in, to try on your own phone. Never share that APK.
 #
-# SDL3's source (its Java half is compiled into the app) is downloaded to port/build/deps. The APK
-# is signed with the Android debug key unless KEYSTORE, KEYSTORE_PASSWORD, KEY_ALIAS and
-# KEY_PASSWORD name a key of your own.
+# SDL3's source (its Java half is compiled into the app) is downloaded to port/build/deps.
+#
+# Signing: with KEYSTORE, KEYSTORE_PASSWORD, KEY_ALIAS and KEY_PASSWORD the APK is signed with
+# that key. They are also read from the file SIGNING names (default
+# ~/.config/musclemarch/android-signing.env, kept outside the repository), as lines of
+# NAME="value". Without either it is signed with the Android debug key, which is fine for
+# sideloading your own build; RELEASE=1 refuses that, because a published APK has to carry the
+# same key every time or it won't install over the one before.
 set -eu
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 OUT="$ROOT/build/release"
@@ -22,6 +27,14 @@ SDL_SHA256=7322236cd12090c3eb40b9728be4d49c76f66ad17d04369584d4ecad5cf77c68
 SDL_DIR="$ROOT/port/build/deps/SDL3-$SDL_VERSION-src"
 PY="$ROOT/.venv/bin/python"
 [ -x "$PY" ] || PY="$(command -v python3)"
+SIGNING="${SIGNING:-$HOME/.config/musclemarch/android-signing.env}"
+if [ -z "${KEYSTORE:-}" ] && [ -f "$SIGNING" ]; then
+    . "$SIGNING"
+fi
+if [ -n "${RELEASE:-}" ]; then
+    [ -n "${KEYSTORE:-}" ] || { echo "error: a release APK needs the signing key ($SIGNING)" >&2; exit 1; }
+    [ -z "${GAME_FILES:-}" ] || { echo "error: a release APK can't have game files packed in" >&2; exit 1; }
+fi
 
 if [ -z "${ANDROID_HOME:-}" ]; then
     for candidate in /opt/homebrew/share/android-commandlinetools "$HOME/Library/Android/sdk" "$HOME/Android/Sdk"; do
@@ -67,4 +80,4 @@ fi
 (cd "$ROOT/android" && ./gradlew --console=plain assembleRelease "$@")
 mkdir -p "$OUT"
 cp "$ROOT/android/app/build/outputs/apk/release/app-release.apk" "$OUT/$NAME"
-echo "wrote $OUT/$NAME"
+if [ -n "${KEYSTORE:-}" ]; then echo "wrote $OUT/$NAME, signed with $KEYSTORE"; else echo "wrote $OUT/$NAME, signed with the debug key"; fi

@@ -72,14 +72,15 @@ on their own machines; they are never built by CI or committed. Each script need
 code (`make port` once, on any machine; copy `port/build/musclemarch/generated/` to the build
 machine and pass `GENERATED=...`). All write to `build/release/`.
 
-`tools/release/all.sh` runs all three on an Apple Silicon Mac with Docker (OrbStack) and writes
-`SHA256SUMS.txt`.
+`tools/release/all.sh` runs all four on an Apple Silicon Mac with Docker (OrbStack) and writes
+`SHA256SUMS.txt`. Its APK must be signed with the release key (see "Android").
 
 | Script | Where | Output |
 | --- | --- | --- |
 | `tools/release/macos.sh` | macOS on Apple Silicon | `MuscleMarch-macOS.zip`: `Muscle March.app` (macOS 13+, SDL3 static, signed ad hoc) |
 | `tools/release/linux.sh` | x86_64 Linux, e.g. an Ubuntu 24.04 container | `MuscleMarch-x86_64.AppImage` (also for Steam Deck) |
 | `tools/release/windows.sh` | x86_64 Linux with MinGW-w64 (cross-compile) | `MuscleMarch-windows.zip` |
+| `tools/release/android.sh` | macOS or Linux with the Android SDK | `MuscleMarch-android.apk` (arm64, Android 8+) |
 
 Linux packages (Ubuntu 24.04): `g++ cmake ninja-build python3 curl file libx11-dev libxext-dev
 libxrandr-dev libxcursor-dev libxi-dev libxss-dev libxtst-dev libxkbcommon-dev libwayland-dev
@@ -115,7 +116,11 @@ The app's folder (`Android/data/io.github.tmcleroy.musclemarch/files`) also hold
 variables above). The game's output goes to the system log: `adb logcat -s musclemarch SDL`.
 
 The APK is signed with the Android debug key unless `KEYSTORE`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`
-and `KEY_PASSWORD` name your own. Install with `adb install -r <apk>`, or copy it to the phone and
+and `KEY_PASSWORD` name your own, in the environment or as `NAME="value"` lines in
+`~/.config/musclemarch/android-signing.env` (`SIGNING=...` names another file). Android only
+installs an update over an app signed with the same key, so the published APKs all carry one
+release key, which lives outside the repository with whoever makes the releases: `RELEASE=1`
+(which `all.sh` sets) refuses to build without it or with game files packed in. Install with `adb install -r <apk>`, or copy it to the phone and
 open it (allow installing from that source).
 
 On the emulator (an arm64 image on Apple Silicon, started with `-gpu host`), `adb shell input tap`
