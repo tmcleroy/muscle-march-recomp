@@ -89,7 +89,8 @@ next to it:
   main.dol, the U8 archives to files/NN/; about a second). The result is byte-identical to
   `tools/extract.py`'s for everything the game reads. **Play** runs the game in the player's folder
   (`~/Library/Application Support/Muscle March/`: settings.ini, launcher.ini, game/, nand/;
-  `MUSCLE_MARCH_HOME` overrides it for tests). Without a build there, a development checkout's
+  `MUSCLE_MARCH_HOME` overrides it for tests; a `portable.txt` next to the program makes it a
+  `user/` folder there). Without a build there, a development checkout's
   `extracted/` is used.
 - **Features**: preset Pure / Enhanced / Custom and one toggle per feature, as listed by the game
   program itself (`musclemarch --list-features`). Changing a toggle switches to Custom. New

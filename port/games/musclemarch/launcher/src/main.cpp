@@ -2,6 +2,7 @@
 //   musclemarch-launcher [--screenshot PREFIX]   (PREFIX0.png.. one picture per page, then quit)
 //   musclemarch-launcher --play                  (straight into the game set up earlier)
 // MUSCLE_MARCH_HOME=folder uses that folder instead of the player's (settings, launcher.ini, the built game).
+// A portable.txt next to the program (the AppImage, the macOS app) uses a user/ folder there instead.
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
