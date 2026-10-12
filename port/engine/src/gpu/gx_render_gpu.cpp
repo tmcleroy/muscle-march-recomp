@@ -100,6 +100,7 @@ struct Shaders {
     SDL_GPUShader* tev_vertex = nullptr;
     SDL_GPUShader* tev = nullptr;
     SDL_GPUShader* tev_early = nullptr;
+    std::vector<SDL_GPUShader*> specialised;  // by index in k_tev_specialised, made on first use
 };
 
 struct Device {
@@ -147,6 +148,7 @@ struct Batch {
     uint32_t blend = 0;
     uint32_t depth = 0;
     bool early_depth = false;
+    int32_t shader = -1;  // index in k_tev_specialised, or -1 for the general shader
     uint32_t top_left = 0;
     uint32_t bottom_right = 0;
     uint32_t first = 0;
@@ -195,9 +197,154 @@ int scaled(int value) {
     return value * g_scale;
 }
 
+// --- specialised TEV shaders ----------------------------------------------
+//
+// The general TEV shader interprets the stage setup per pixel. For the setups listed when the
+// shaders were generated (games/*/tev_keys.txt) there is a shader with the setup built in; any
+// other setup draws with the general shader. WP_TEV_GENERAL=1 uses the general shader for all.
+
+struct TevKeyHash {
+    size_t operator()(const TevKey& key) const {
+        return static_cast<size_t>(hash_bytes(reinterpret_cast<const uint8_t*>(key.words), key.count * sizeof(uint32_t)));
+    }
+};
+
+struct TevKeyEqual {
+    bool operator()(const TevKey& a, const TevKey& b) const {
+        return a.count == b.count && std::memcmp(a.words, b.words, a.count * sizeof(uint32_t)) == 0;
+    }
+};
+
+struct KeyUse {
+    uint32_t id = 0;
+    double pixels = 0.0;  // at native resolution, before depth and alpha tests
+};
+
+std::unordered_map<TevKey, int32_t, TevKeyHash, TevKeyEqual> g_specialised;
+bool g_specialise = std::getenv("WP_TEV_GENERAL") == nullptr;
+uint64_t g_general_draws = 0;  // since the last WP_LOG_GPU_TIME line
+uint64_t g_specialised_draws = 0;
+uint64_t g_total_general = 0;
+uint64_t g_total_specialised = 0;
+// WP_LOG_TEV_KEYS=file: add every setup drawn to the file (one line of hex words per key, the
+// format gen_gpu_shaders.py reads) and report which keys cover the most pixels.
+const char* g_key_log = std::getenv("WP_LOG_TEV_KEYS");
+std::unordered_map<TevKey, KeyUse, TevKeyHash, TevKeyEqual> g_key_uses;
+// WP_LOG_GPU_TIME=1: wait for the graphics card after every submit and report the time waited.
+bool g_gpu_timing = std::getenv("WP_LOG_GPU_TIME") != nullptr;
+double g_gpu_seconds = 0.0;
+uint32_t g_gpu_read_backs = 0;
+
+void load_specialised() {
+    for (const uint32_t* entry = k_tev_key_words; entry[0] != 0; entry += 2 + entry[0]) {
+        TevKey key{};
+        key.count = entry[0];
+        std::memcpy(key.words, entry + 2, key.count * sizeof(uint32_t));
+        g_specialised[key] = static_cast<int32_t>(entry[1]);
+    }
+    g_device.shaders.specialised.assign(k_tev_specialised_count, nullptr);
+    if (!g_key_log) {
+        return;
+    }
+    if (FILE* file = std::fopen(g_key_log, "r")) {
+        char line[2048];
+        while (std::fgets(line, sizeof line, file)) {
+            TevKey key{};
+            char* cursor = line;
+            while (key.count < std::size(key.words)) {
+                char* end = nullptr;
+                unsigned long word = std::strtoul(cursor, &end, 16);
+                if (end == cursor) {
+                    break;
+                }
+                key.words[key.count++] = static_cast<uint32_t>(word);
+                cursor = end;
+            }
+            if (key.count && line[0] != '#') {
+                uint32_t id = static_cast<uint32_t>(g_key_uses.size() + 1);
+                g_key_uses.try_emplace(key, KeyUse{id});
+            }
+        }
+        std::fclose(file);
+    }
+}
+
+double covered_pixels(const ScreenVertex* vertices, uint32_t count) {
+    double total = 0.0;
+    for (uint32_t i = 0; i + 2 < count; i += 3) {
+        double x[3];
+        double y[3];
+        for (uint32_t v = 0; v < 3; v++) {
+            double w = vertices[i + v].w > 0.0f ? vertices[i + v].w : 1.0;
+            x[v] = std::clamp(vertices[i + v].x / w, -1.0, 1.0);
+            y[v] = std::clamp(vertices[i + v].y / w, -1.0, 1.0);
+        }
+        total += std::abs((x[1] - x[0]) * (y[2] - y[0]) - (x[2] - x[0]) * (y[1] - y[0])) * 0.5;
+    }
+    return total * 0.25 * kEfbWidth * kEfbHeight;
+}
+
+void note_key(const TevKey& key, const ScreenVertex* vertices, uint32_t count) {
+    auto found = g_key_uses.find(key);
+    if (found == g_key_uses.end()) {
+        found = g_key_uses.emplace(key, KeyUse{static_cast<uint32_t>(g_key_uses.size() + 1)}).first;
+        if (FILE* file = std::fopen(g_key_log, "a")) {
+            for (uint32_t i = 0; i < key.count; i++) {
+                std::fprintf(file, i ? " %x" : "%x", key.words[i]);
+            }
+            std::fputc('\n', file);
+            std::fclose(file);
+        }
+    }
+    found->second.pixels += covered_pixels(vertices, count);
+}
+
+// Every 300 frames: the keys that covered the most pixels since the last report, as
+// "number of the key in the file:screens covered per frame" (s = specialised, g = general shader).
+void report_keys(uint64_t frame) {
+    std::vector<std::pair<double, const TevKey*>> order;
+    double total = 0.0;
+    for (auto& [key, use] : g_key_uses) {
+        if (use.pixels > 0.0) {
+            order.emplace_back(use.pixels, &key);
+            total += use.pixels;
+        }
+    }
+    std::sort(order.begin(), order.end(), [](const auto& a, const auto& b) { return a.first > b.first; });
+    double screen = 300.0 * kEfbWidth * kEfbHeight;
+    std::string text;
+    for (size_t i = 0; i < order.size() && i < 8; i++) {
+        KeyUse& use = g_key_uses[*order[i].second];
+        char item[64];
+        std::snprintf(item, sizeof item, " %u%c:%.2f", use.id, g_specialised.count(*order[i].second) ? 's' : 'g', use.pixels / screen);
+        text += item;
+    }
+    std::fprintf(stderr, "tev keys, frame %llu: %zu drawn, %.2f screens per frame:%s\n", static_cast<unsigned long long>(frame), order.size(), total / screen, text.c_str());
+    for (auto& [key, use] : g_key_uses) {
+        use.pixels = 0.0;
+    }
+}
+
+SDL_GPUShader* make_shader(SDL_GPUShaderStage stage, const uint32_t* spirv, size_t spirv_size, const char* msl, uint32_t samplers, uint32_t uniforms);
+
+SDL_GPUShader* specialised_shader(int32_t index) {
+    SDL_GPUShader*& shader = g_device.shaders.specialised[index];
+    if (!shader) {
+        const TevSpecialised& source = k_tev_specialised[index];
+        auto started = std::chrono::steady_clock::now();
+        shader = make_shader(SDL_GPU_SHADERSTAGE_FRAGMENT, source.spirv, source.spirv_size, source.msl, kTextureMaps, 2);
+        double ms = std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count() * 1000.0;
+        log::write("tev", "specialised shader %d made in %.1f ms", index, ms);
+        if (g_gpu_timing) {
+            std::fprintf(stderr, "specialised shader %d made in %.1f ms\n", index, ms);
+        }
+    }
+    return shader;
+}
+
 // --- device objects -----------------------------------------------------
 
-SDL_GPUShader* make_shader(SDL_GPUShaderStage stage, const unsigned char* spirv, size_t spirv_size, const char* msl, uint32_t samplers, uint32_t uniforms) {
+SDL_GPUShader* make_shader(SDL_GPUShaderStage stage, const uint32_t* spirv, size_t spirv_size, const char* msl, uint32_t samplers, uint32_t uniforms) {
     SDL_GPUShaderCreateInfo info{};
     info.stage = stage;
     info.num_samplers = samplers;
@@ -209,7 +356,7 @@ SDL_GPUShader* make_shader(SDL_GPUShaderStage stage, const unsigned char* spirv,
         info.entrypoint = "main0";
     } else {
         info.format = SDL_GPU_SHADERFORMAT_SPIRV;
-        info.code = spirv;
+        info.code = reinterpret_cast<const Uint8*>(spirv);
         info.code_size = spirv_size;
         info.entrypoint = "main";
     }
@@ -232,6 +379,7 @@ bool create_shaders() {
     s.tev_vertex = WP_SHADER(SDL_GPU_SHADERSTAGE_VERTEX, tev_vertex, 0, 1);
     s.tev = WP_SHADER(SDL_GPU_SHADERSTAGE_FRAGMENT, tev_fragment, kTextureMaps, 2);
     s.tev_early = WP_SHADER(SDL_GPU_SHADERSTAGE_FRAGMENT, tev_early_fragment, kTextureMaps, 2);
+    load_specialised();
     return s.fullscreen && s.present && s.overlay && s.clear && s.copy && s.tev_vertex && s.tev && s.tev_early;
 }
 
@@ -399,8 +547,10 @@ bool uses_tev_factor(const BlendState& blend) {
 }
 
 // pass: 0 = normal, 1 = colour with the TEV alpha as blend source, 2 = alpha only.
-SDL_GPUGraphicsPipeline* tev_pipeline(uint32_t blend_word, uint32_t depth, bool early, uint32_t pass) {
-    uint64_t key = blend_word | (static_cast<uint64_t>(depth) << 32) | (static_cast<uint64_t>(early) << 40) | (static_cast<uint64_t>(pass) << 41);
+// shader: index of a specialised shader (its key includes early), or -1 for the general one.
+SDL_GPUGraphicsPipeline* tev_pipeline(uint32_t blend_word, uint32_t depth, bool early, uint32_t pass, int32_t shader) {
+    uint64_t key = blend_word | (static_cast<uint64_t>(depth) << 32) | (static_cast<uint64_t>(early) << 40) | (static_cast<uint64_t>(pass) << 41) |
+                   (static_cast<uint64_t>(shader + 1) << 43);
     auto found = g_device.tev_pipelines.find(key);
     if (found != g_device.tev_pipelines.end()) {
         return found->second;
@@ -439,6 +589,11 @@ SDL_GPUGraphicsPipeline* tev_pipeline(uint32_t blend_word, uint32_t depth, bool 
     SDL_GPUGraphicsPipelineCreateInfo info{};
     info.vertex_shader = g_device.shaders.tev_vertex;
     info.fragment_shader = early ? g_device.shaders.tev_early : g_device.shaders.tev;
+    if (shader >= 0) {
+        if (SDL_GPUShader* specialised = specialised_shader(shader)) {
+            info.fragment_shader = specialised;
+        }
+    }
     info.vertex_input_state.num_vertex_buffers = 1;
     info.vertex_input_state.vertex_buffer_descriptions = &buffer;
     info.vertex_input_state.num_vertex_attributes = 11;
@@ -458,7 +613,10 @@ SDL_GPUGraphicsPipeline* tev_pipeline(uint32_t blend_word, uint32_t depth, bool 
     }
     SDL_GPUGraphicsPipeline* pipeline = SDL_CreateGPUGraphicsPipeline(g_device.device, &info);
     if (!pipeline) {
-        std::fprintf(stderr, "SDL_GPU TEV pipeline %06x/%02x: %s\n", blend_word, depth, SDL_GetError());
+        std::fprintf(stderr, "SDL_GPU TEV pipeline %06x/%02x (shader %d): %s\n", blend_word, depth, shader, SDL_GetError());
+        if (shader >= 0) {
+            pipeline = tev_pipeline(blend_word, depth, early, pass, -1);
+        }
     }
     g_device.tev_pipelines[key] = pipeline;
     return pipeline;
@@ -518,9 +676,13 @@ void prepare_texture_pack() {
     }
 }
 
+// 6x (a 3840 x 2688 picture) fills a 4K screen. The menus draw many full-screen layers; with the general TEV
+// shader they fell below full speed above 3x, with the specialised shaders they do not.
+constexpr int kMaxScale = 6;
+
 int requested_scale() {
     static const settings::LiveNumber scale("video.scale", "WP_SCALE");
-    return std::clamp(scale(), 1, 6);
+    return std::clamp(scale(), 1, kMaxScale);
 }
 
 bool initialize() {
@@ -667,7 +829,7 @@ void record_segment() {
                 if (pass_mode == 3) {
                     break;
                 }
-                SDL_GPUGraphicsPipeline* pipeline = tev_pipeline(batch.blend, batch.depth, batch.early_depth, pass_mode);
+                SDL_GPUGraphicsPipeline* pipeline = tev_pipeline(batch.blend, batch.depth, batch.early_depth, pass_mode, batch.shader);
                 if (!pipeline) {
                     continue;
                 }
@@ -695,12 +857,21 @@ void submit(bool wait) {
     if (!g_command) {
         return;
     }
-    if (wait) {
+    if (wait || g_gpu_timing) {
+        auto started = std::chrono::steady_clock::now();
+        // The fence is released one submit late: SDL's Metal backend tells that a submitted
+        // command buffer has finished by its fence, and a fence released before that check is
+        // handed to the next command buffer, so the earlier one would never be cleaned up.
+        static SDL_GPUFence* previous = nullptr;
         SDL_GPUFence* fence = SDL_SubmitGPUCommandBufferAndAcquireFence(g_command);
         if (fence) {
             SDL_WaitForGPUFences(g_device.device, true, &fence, 1);
-            SDL_ReleaseGPUFence(g_device.device, fence);
         }
+        if (previous) {
+            SDL_ReleaseGPUFence(g_device.device, previous);
+        }
+        previous = fence;
+        g_gpu_seconds += std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
     } else {
         SDL_SubmitGPUCommandBuffer(g_command);
     }
@@ -754,6 +925,7 @@ bool download(SDL_GPUTexture* texture, uint32_t width, uint32_t height, std::vec
     auto wait_started = std::chrono::steady_clock::now();
     submit(true);
     g_downloads++;
+    g_gpu_read_backs++;
     g_download_seconds += std::chrono::duration<double>(std::chrono::steady_clock::now() - wait_started).count();
     bytes.resize(static_cast<size_t>(width) * height * 4);
     void* mapped = SDL_MapGPUTransferBuffer(g_device.device, staging, false);
@@ -1169,11 +1341,23 @@ void draw(const ScreenVertex* vertices, uint32_t count) {
         g_open.blend = blend;
         g_open.depth = depth;
         g_open.early_depth = early_depth;
+        g_open.shader = -1;
+        if (g_specialise && !g_specialised.empty()) {
+            auto found = g_specialised.find(tev_key(constants, early_depth));
+            if (found != g_specialised.end()) {
+                g_open.shader = found->second;
+            }
+        }
+        (g_open.shader >= 0 ? g_specialised_draws : g_general_draws)++;
+        (g_open.shader >= 0 ? g_total_specialised : g_total_general)++;
         g_open.top_left = bp[0x20];
         g_open.bottom_right = bp[0x21];
         g_open.first = static_cast<uint32_t>(g_segment.vertices.size());
         g_open.count = 0;
         g_open_valid = true;
+    }
+    if (g_key_log) {
+        note_key(tev_key(constants, early_depth), vertices, count);
     }
     g_segment.vertices.insert(g_segment.vertices.end(), vertices, vertices + count);
     g_open.count += count;
@@ -1279,11 +1463,31 @@ bool present_frame(void* window, double) {
         return false;
     }
     submit(false);
+    static uint64_t presented = 0;
+    presented++;
+    if (g_gpu_timing && presented % 60 == 0) {
+        std::fprintf(stderr, "gpu time, frame %llu: %.2f ms per frame (scale %d, %llu draws specialised, %llu general, %u read back)\n",
+                     static_cast<unsigned long long>(presented), g_gpu_seconds * 1000.0 / 60.0, g_scale, static_cast<unsigned long long>(g_specialised_draws),
+                     static_cast<unsigned long long>(g_general_draws), g_gpu_read_backs);
+        g_gpu_seconds = 0.0;
+        g_gpu_read_backs = 0;
+        g_specialised_draws = 0;
+        g_general_draws = 0;
+    }
+    if (g_key_log && presented % 300 == 0) {
+        report_keys(presented);
+    }
     if (log::enabled()) {
         static auto report_at = std::chrono::steady_clock::now();
         auto now = std::chrono::steady_clock::now();
         if (now - report_at >= std::chrono::seconds(1)) {
             log::write("copies", "%u EFB copies to textures, %u read back in %.0f ms (scale %d)", g_copies, g_downloads, g_download_seconds * 1000.0, g_scale);
+            static uint64_t logged_specialised = 0;
+            static uint64_t logged_general = 0;
+            log::write("tev", "%llu draw batches with a specialised shader, %llu with the general one", static_cast<unsigned long long>(g_total_specialised - logged_specialised),
+                       static_cast<unsigned long long>(g_total_general - logged_general));
+            logged_specialised = g_total_specialised;
+            logged_general = g_total_general;
             g_copies = 0;
             g_downloads = 0;
             g_download_seconds = 0.0;

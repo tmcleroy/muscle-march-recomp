@@ -5,6 +5,22 @@
 - Android: on a first start the app asks for your own WAD and Wii common key and builds the game
   files on the phone, so an APK no longer has to be built with the game files on a computer.
   The APK is now one of the release downloads.
+- The internal resolution goes up to 6x again (3840 x 2688, for 4K screens) on macOS, Linux and
+  Android; 3x stays the limit on Windows for now. Menus and the title screen keep full speed at
+  the higher settings: the common ways the game sets up its pixel pipeline now each have their own
+  small pixel shader instead of one general shader working the setup out for every pixel. On an
+  Apple M4 the title screen at 4x went from about 31 ms of graphics card time per frame to about
+  4 ms, and at 6x from about 68 ms to about 9 ms. The picture is unchanged.
+
+## 0.1.0-beta.4
+
+- Launcher: a **Video** page with the internal resolution, which was only in `settings.ini` and the
+  F10 menu before. Changes made in the F10 menu while playing now show in the launcher afterwards
+  instead of being overwritten at the next start.
+- The internal resolution now stops at 3x (1920 x 1344); it went to 6x. Above 3x the menus ran
+  below full speed even on fast graphics cards. A higher saved setting is drawn at 3x.
+- Faster drawing at high internal resolutions: the main pixel shader no longer copies its register
+  arrays on every helper call. The picture is unchanged.
 
 ## 0.1.0-beta.3
 

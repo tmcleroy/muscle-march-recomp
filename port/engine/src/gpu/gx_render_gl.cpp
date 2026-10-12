@@ -37,7 +37,7 @@ namespace {
     X(ActiveTexture) X(AttachShader) X(BindBuffer) X(BindBufferBase) X(BindFramebuffer) X(BindSampler) X(BindTexture) X(BindVertexArray)              \
     X(BlendEquationSeparate) X(BlendFuncSeparate) X(BufferData) X(BufferSubData) X(CheckFramebufferStatus) X(Clear) X(ClearColor) X(ClearDepth)      \
     X(ColorMask) X(CompileShader) X(CreateProgram) X(CreateShader) X(DeleteFramebuffers) X(DeleteShader) X(DeleteTextures) X(DepthFunc)              \
-    X(DepthMask) X(Disable) X(DrawArrays) X(Enable) X(EnableVertexAttribArray) X(FramebufferTexture2D) X(GenBuffers) X(GenFramebuffers)             \
+    X(DepthMask) X(Disable) X(DrawArrays) X(Enable) X(EnableVertexAttribArray) X(Finish) X(FramebufferTexture2D) X(GenBuffers) X(GenFramebuffers)   \
     X(GenSamplers) X(GenTextures) X(GenVertexArrays) X(GenerateMipmap) X(GetIntegerv) X(GetProgramInfoLog) X(GetProgramiv) X(GetShaderInfoLog)      \
     X(GetShaderiv) X(GetString) X(GetStringi) X(GetUniformBlockIndex) X(GetUniformLocation) X(LinkProgram) X(PixelStorei) X(ReadPixels)             \
     X(SamplerParameterf) X(SamplerParameteri) X(Scissor) X(ShaderSource) X(TexImage2D) X(TexParameteri) X(TexSubImage2D) X(Uniform1i)              \
@@ -276,7 +276,11 @@ ivec4 quantized(vec4 value) {
     return ivec4(roundEven(value * 255.0));
 }
 
-ivec3 konst_color(uint sel, ivec4 k[4]) {
+// The TEV registers and constant colours are globals: as parameters every call copies the arrays.
+ivec4 r[4];
+ivec4 k[4];
+
+ivec3 konst_color(uint sel) {
     if (sel < 8u) {
         return ivec3(kFractions[sel]);
     }
@@ -291,7 +295,7 @@ ivec3 konst_color(uint sel, ivec4 k[4]) {
     return ivec3(0);
 }
 
-int konst_alpha(uint sel, ivec4 k[4]) {
+int konst_alpha(uint sel) {
     if (sel < 8u) {
         return kFractions[sel];
     }
@@ -303,7 +307,7 @@ int konst_alpha(uint sel, ivec4 k[4]) {
     return 0;
 }
 
-ivec3 color_input(uint sel, ivec4 r[4], ivec4 tex, ivec4 ras, ivec3 kc) {
+ivec3 color_input(uint sel, ivec4 tex, ivec4 ras, ivec3 kc) {
     switch (sel) {
     case 0u: return r[0].rgb;
     case 1u: return r[0].aaa;
@@ -324,7 +328,7 @@ ivec3 color_input(uint sel, ivec4 r[4], ivec4 tex, ivec4 ras, ivec3 kc) {
     }
 }
 
-int alpha_input(uint sel, ivec4 r[4], ivec4 tex, ivec4 ras, int ka) {
+int alpha_input(uint sel, ivec4 tex, ivec4 ras, int ka) {
     switch (sel) {
     case 0u: return r[0].a;
     case 1u: return r[1].a;
@@ -373,8 +377,7 @@ ivec3 compare_color(uint mode, bool eq, ivec3 a, ivec3 b, ivec3 c) {
 
 ivec4 apply_swap(ivec4 value, uint table) {
     uint order_bits = swaps[table];
-    int components[4] = int[4](value.r, value.g, value.b, value.a);
-    return ivec4(components[order_bits & 3u], components[(order_bits >> 2u) & 3u], components[(order_bits >> 4u) & 3u], components[(order_bits >> 6u) & 3u]);
+    return ivec4(value[order_bits & 3u], value[(order_bits >> 2u) & 3u], value[(order_bits >> 4u) & 3u], value[(order_bits >> 6u) & 3u]);
 }
 
 ivec3 combine(ivec3 a, ivec3 b, ivec3 c, ivec3 d, uint bias_code, bool subtract, uint scale_code) {
@@ -413,8 +416,8 @@ void main() {
         gradient_x[g] = dFdx(value);
         gradient_y[g] = dFdy(value);
     }
-    ivec4 k[4] = ivec4[4](quantized(konst[0]), quantized(konst[1]), quantized(konst[2]), quantized(konst[3]));
-    ivec4 r[4] = ivec4[4](quantized(initial[0]), quantized(initial[1]), quantized(initial[2]), quantized(initial[3]));
+    k = ivec4[4](quantized(konst[0]), quantized(konst[1]), quantized(konst[2]), quantized(konst[3]));
+    r = ivec4[4](quantized(initial[0]), quantized(initial[1]), quantized(initial[2]), quantized(initial[3]));
     ivec4 c0 = quantized(v_c0);
     ivec4 c1 = quantized(v_c1);
     uint count = header.x;
@@ -501,12 +504,12 @@ void main() {
             ras = ivec4(alphabump | (alphabump >> 5));
         }
         ras = apply_swap(ras, ae & 3u);
-        ivec3 kc = konst_color(ksel & 31u, k);
-        int ka = konst_alpha((ksel >> 5u) & 31u, k);
-        ivec3 a = color_input((ce >> 12u) & 15u, r, tex, ras, kc) & 255;
-        ivec3 b = color_input((ce >> 8u) & 15u, r, tex, ras, kc) & 255;
-        ivec3 c = color_input((ce >> 4u) & 15u, r, tex, ras, kc) & 255;
-        ivec3 d = color_input(ce & 15u, r, tex, ras, kc);
+        ivec3 kc = konst_color(ksel & 31u);
+        int ka = konst_alpha((ksel >> 5u) & 31u);
+        ivec3 a = color_input((ce >> 12u) & 15u, tex, ras, kc) & 255;
+        ivec3 b = color_input((ce >> 8u) & 15u, tex, ras, kc) & 255;
+        ivec3 c = color_input((ce >> 4u) & 15u, tex, ras, kc) & 255;
+        ivec3 d = color_input(ce & 15u, tex, ras, kc);
         uint bias_code = (ce >> 16u) & 3u;
         uint scale_code = (ce >> 20u) & 3u;
         ivec3 color;
@@ -516,10 +519,10 @@ void main() {
             color = combine(a, b, c, d, bias_code, ((ce >> 18u) & 1u) != 0u, scale_code);
         }
         color = ((ce >> 19u) & 1u) != 0u ? clamp(color, 0, 255) : clamp(color, -1024, 1023);
-        int aa = alpha_input((ae >> 13u) & 7u, r, tex, ras, ka) & 255;
-        int ab = alpha_input((ae >> 10u) & 7u, r, tex, ras, ka) & 255;
-        int ac = alpha_input((ae >> 7u) & 7u, r, tex, ras, ka) & 255;
-        int ad = alpha_input((ae >> 4u) & 7u, r, tex, ras, ka);
+        int aa = alpha_input((ae >> 13u) & 7u, tex, ras, ka) & 255;
+        int ab = alpha_input((ae >> 10u) & 7u, tex, ras, ka) & 255;
+        int ac = alpha_input((ae >> 7u) & 7u, tex, ras, ka) & 255;
+        int ad = alpha_input((ae >> 4u) & 7u, tex, ras, ka);
         uint abias_code = (ae >> 16u) & 3u;
         uint ascale_code = (ae >> 20u) & 3u;
         int alpha;
@@ -673,6 +676,7 @@ struct Device {
     std::map<uint64_t, GLuint> samplers;
     std::map<uint64_t, CachedTexture> textures;
     std::map<uint32_t, CopiedTexture> copies;
+    std::map<std::vector<uint32_t>, GLuint> specialised;  // by TEV key; 0 = use the general shader
     bool failed = false;
     bool ready = false;
 };
@@ -840,6 +844,41 @@ GLuint make_sampler(GLint min_filter, GLint mag_filter, GLint wrap) {
     return sampler;
 }
 
+void prepare_tev_program(GLuint program) {
+    bind_samplers(program, {"t0", "t1", "t2", "t3", "t4", "t5", "t6", "t7"});
+    gl.Uniform1i(gl.GetUniformLocation(program, "depth_zero_to_one"), g_device.clip_control ? 1 : 0);
+    GLuint block = gl.GetUniformBlockIndex(program, "Constants");
+    if (block != GL_INVALID_INDEX) {
+        gl.UniformBlockBinding(program, block, 0);
+    }
+}
+
+const char* tev_preamble(bool early) {
+    return early ? "#version 410 core\n#extension GL_ARB_shader_image_load_store : require\nlayout(early_fragment_tests) in;\n" : "#version 410 core\n";
+}
+
+// The TEV program for a batch: the general shader's text with the batch's setup built in (see
+// tev_specialise.cpp), compiled when the setup is first drawn. WP_TEV_GENERAL=1 turns it off.
+GLuint tev_program(const Constants& constants, bool early_depth) {
+    static const bool specialise = std::getenv("WP_TEV_GENERAL") == nullptr;
+    const Program& general = early_depth ? g_device.early_tev : g_device.tev;
+    bool early = early_depth && g_device.early_tev.id != g_device.tev.id;
+    if (!specialise) {
+        return general.id;
+    }
+    TevKey key = tev_key(constants, early);
+    auto [entry, added] = g_device.specialised.try_emplace(std::vector<uint32_t>(key.words, key.words + key.count), 0);
+    if (added) {
+        std::string fragment = specialise_tev(kTevFragment, key.words, key.count);
+        Program program;
+        if (!fragment.empty() && link(program, kTevVertex, tev_preamble(early) + fragment)) {
+            prepare_tev_program(program.id);
+            entry->second = program.id;
+        }
+    }
+    return entry->second ? entry->second : general.id;
+}
+
 bool create_pipeline() {
     GLint major = 0;
     GLint minor = 0;
@@ -853,22 +892,18 @@ bool create_pipeline() {
         gl.ClipControl(GL_LOWER_LEFT, GL_ZERO_TO_ONE);
         g_device.clip_control = true;
     }
-    std::string fragment = std::string("#version 410 core\n") + kTevFragment;
-    if (!link(g_device.tev, kTevVertex, fragment)) {
+    if (!link(g_device.tev, kTevVertex, std::string(tev_preamble(false)) + kTevFragment)) {
         return false;
     }
     if (has_extension("GL_ARB_shader_image_load_store")) {
-        std::string early = std::string("#version 410 core\n#extension GL_ARB_shader_image_load_store : require\nlayout(early_fragment_tests) in;\n") + kTevFragment;
-        if (!link(g_device.early_tev, kTevVertex, early)) {
+        if (!link(g_device.early_tev, kTevVertex, std::string(tev_preamble(true)) + kTevFragment)) {
             return false;
         }
     } else {
         g_device.early_tev = g_device.tev;
     }
     for (Program* program : {&g_device.tev, &g_device.early_tev}) {
-        bind_samplers(program->id, {"t0", "t1", "t2", "t3", "t4", "t5", "t6", "t7"});
-        gl.Uniform1i(gl.GetUniformLocation(program->id, "depth_zero_to_one"), g_device.clip_control ? 1 : 0);
-        gl.UniformBlockBinding(program->id, gl.GetUniformBlockIndex(program->id, "Constants"), 0);
+        prepare_tev_program(program->id);
     }
     if (!link(g_device.present, kFullscreenVertex, kPresentFragment) || !link(g_device.overlay, kFullscreenVertex, kOverlayFragment) ||
         !link(g_device.copy, kFullscreenVertex, kCopyFragment) || !link(g_device.clear, kFullscreenVertex, kClearFragment)) {
@@ -932,7 +967,7 @@ void prepare_texture_pack() {
 
 int requested_scale() {
     static const settings::LiveNumber scale("video.scale", "WP_SCALE");
-    return std::clamp(scale(), 1, 6);
+    return std::clamp(scale(), 1, 6);  // as gx_render_gpu.cpp: kMaxScale
 }
 
 bool initialize() {
@@ -1277,7 +1312,7 @@ void flush_pending() {
     gl.Scissor(scaled(left), scaled(top), std::max(0, scaled(right - left)), std::max(0, scaled(bottom - top)));
     apply_blend(pending.blend);
     apply_depth(pending.depth);
-    gl.UseProgram(pending.early_depth ? g_device.early_tev.id : g_device.tev.id);
+    gl.UseProgram(tev_program(pending.constants, pending.early_depth));
     gl.BindVertexArray(g_device.tev_layout);
     gl.BindBuffer(GL_ARRAY_BUFFER, g_device.vertex_buffer);
     size_t total = pending.vertices.size();
@@ -1543,6 +1578,19 @@ void copy_to_framebuffer(int x, int y, int width, int height, bool depth, const 
         }
     }
     run_copy(g_device.frame, physical_width, physical_height, x, y, width, height, kXfbFormat, false, false, depth, filter);
+    // WP_LOG_GPU_TIME=1: wait for the graphics card at the end of every frame and report the time waited.
+    static const bool timing = std::getenv("WP_LOG_GPU_TIME") != nullptr;
+    if (timing) {
+        static double seconds = 0.0;
+        auto started = std::chrono::steady_clock::now();
+        gl.Finish();
+        seconds += std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
+        if (g_frame % 60 == 0) {
+            std::fprintf(stderr, "gpu time, frame %llu: %.2f ms per frame (scale %d, %zu specialised shaders)\n", static_cast<unsigned long long>(g_frame), seconds * 1000.0 / 60.0,
+                         g_scale, g_device.specialised.size());
+            seconds = 0.0;
+        }
+    }
 }
 
 void apply_scale() {

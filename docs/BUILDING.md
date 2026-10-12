@@ -48,7 +48,11 @@ make ref SECS=40   # Dolphin reference run, frames in dolphin_user/Dump/Frames
 
 Useful environment variables for the port: `WP_CAPTURE_AT=5,10` (save frames
 at those seconds into `captures/`), `WP_INPUT_SCRIPT="from_ms,to_ms,hexbuttons;..."`,
-`WP_LOG_ES=1`, `WP_LOG_FS=1`, `WP_LOG_IOS=1`, `WP_LOG_WIIMOTE=1`, `WP_LOG_FPS=1`.
+`WP_LOG_ES=1`, `WP_LOG_FS=1`, `WP_LOG_IOS=1`, `WP_LOG_WIIMOTE=1`, `WP_LOG_FPS=1`,
+`WP_LOG_GPU_TIME=1` (graphics card time per frame, printed every 60 frames; the game waits for
+the card after every frame, so use it for measuring only), `WP_TEV_GENERAL=1` (draw everything
+with the general pixel shader), `WP_LOG_TEV_KEYS=file` (SDL_GPU renderer: list the pixel pipeline
+setups drawn; see [dev/TEV_SPECIALISED_SHADERS.md](dev/TEV_SPECIALISED_SHADERS.md)).
 
 ## Tests
 
