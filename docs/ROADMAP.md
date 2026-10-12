@@ -69,20 +69,20 @@ Done (docs/BUILDING.md, "Android"):
   pauses in the background and resumes.
 - Touch controls (feature `touch_controls`, docs/FEATURES.md): the stick guides are the sticks,
   plus a pause button, the back gesture and tap-to-point in menus.
-- `tools/release/android.sh` builds the APK; a development build packs the builder's own game
-  files so it can be tried on a phone.
+- First start: the app asks for the player's WAD and Wii common key (Android's file picker, a
+  paste, or typed) and builds the game files in its folder with the launcher's install code.
+- `tools/release/android.sh` builds the APK; a development build can pack the builder's own game
+  files instead. `tools/release/all.sh` builds it with the other downloads, signed with the
+  release key.
 
-Still to do before an APK can go on the releases page:
+Still to do:
 
-1. **Launcher.** A launcher activity (the desktop launcher's pages, sized for touch) and the game
-   in its own process; `--play` becomes an intent. Until then a first start gets the Enhanced
-   preset and `settings.ini` in the app's folder is the only way to change features.
-2. **Game file and key.** Android's document picker returns `content://` URIs: read the WAD and
-   key files through `SDL_IOStream` in `install.cpp` instead of `std::ifstream`, and build the game
-   files into the app's folder as on desktop.
-3. **Testing on real phones.** So far it has run on the Android emulator (arm64, on Apple
-   Silicon); touch feel, performance and the range of phone Vulkan drivers need real devices. The
-   golden replays have not been run on Android.
-4. Smaller things: a HOME button and the options menu (F10 on desktop) on touch, 32-bit ARM and
+1. **Settings.** There are no launcher pages on Android: a first start gets the Enhanced preset,
+   and `settings.ini` in the app's folder is the only way to change features. Changing the game
+   file afterwards means clearing the app's data.
+2. **Testing on real phones.** So far it has run on the Android emulator (arm64, on Apple
+   Silicon) and one phone, where it plays below full speed; the range of phone Vulkan drivers
+   needs more devices. The golden replays have not been run on Android.
+3. Smaller things: a HOME button and the options menu (F10 on desktop) on touch, 32-bit ARM and
    x86_64 builds if anyone needs them.
 

@@ -61,8 +61,4 @@ if(TARGET SDL3::SDL3 AND NOT ANDROID)
     add_custom_command(TARGET musclemarch POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:SDL3::SDL3> $<TARGET_FILE_DIR:musclemarch>)
 endif()
 
-if(ANDROID)
-    return()  # no launcher there yet (docs/ROADMAP.md)
-endif()
-
 add_subdirectory(launcher)

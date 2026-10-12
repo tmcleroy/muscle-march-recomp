@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Android: on a first start the app asks for your own WAD and Wii common key and builds the game
+  files on the phone, so an APK no longer has to be built with the game files on a computer.
+  The APK is now one of the release downloads.
 - The internal resolution goes up to 6x again (3840 x 2688, for 4K screens) on macOS, Linux and
   Android; 3x stays the limit on Windows for now. Menus and the title screen keep full speed at
   the higher settings: the common ways the game sets up its pixel pipeline now each have their own

@@ -76,14 +76,15 @@ on their own machines; they are never built by CI or committed. Each script need
 code (`make port` once, on any machine; copy `port/build/musclemarch/generated/` to the build
 machine and pass `GENERATED=...`). All write to `build/release/`.
 
-`tools/release/all.sh` runs all three on an Apple Silicon Mac with Docker (OrbStack) and writes
-`SHA256SUMS.txt`.
+`tools/release/all.sh` runs all four on an Apple Silicon Mac with Docker (OrbStack) and writes
+`SHA256SUMS.txt`. Its APK must be signed with the release key (see "Android").
 
 | Script | Where | Output |
 | --- | --- | --- |
 | `tools/release/macos.sh` | macOS on Apple Silicon | `MuscleMarch-macOS.zip`: `Muscle March.app` (macOS 13+, SDL3 static, signed ad hoc) |
 | `tools/release/linux.sh` | x86_64 Linux, e.g. an Ubuntu 24.04 container | `MuscleMarch-x86_64.AppImage` (also for Steam Deck) |
 | `tools/release/windows.sh` | x86_64 Linux with MinGW-w64 (cross-compile) | `MuscleMarch-windows.zip` |
+| `tools/release/android.sh` | macOS or Linux with the Android SDK | `MuscleMarch-android.apk` (arm64, Android 8+) |
 
 Linux packages (Ubuntu 24.04): `g++ cmake ninja-build python3 curl file libx11-dev libxext-dev
 libxrandr-dev libxcursor-dev libxi-dev libxss-dev libxtst-dev libxkbcommon-dev libwayland-dev
@@ -103,15 +104,15 @@ machine: `build/release/MuscleMarch-android.apk`. It needs the generated code (`
 downloaded to `port/build/deps` (its Java half is compiled into the app). The Gradle project is
 `android/`; the native half is the same CMake build as everywhere else, as `libmain.so`.
 
-There is no launcher on Android yet (docs/ROADMAP.md), so the app can't take a WAD. Until then:
+On a first start the app asks for the player's own WAD and Wii common key (pasted, typed, or a
+key file) and builds the game files in its folder, as the launcher does on a computer
+(`launcher/src/android_setup.cpp`, with the launcher's `install.cpp`). The key is used once and
+not kept. This APK has no game files in it.
 
-- `make android` (`GAME_FILES=extracted tools/release/android.sh`) makes a **development build**
-  with your own extracted game files packed in, to try on your own phone:
+- `make android` (`GAME_FILES=extracted tools/release/android.sh`) instead makes a **development
+  build** with your own extracted game files packed in, which skips that screen:
   `build/release/MuscleMarch-android-with-game-DO-NOT-SHARE.apk`. It unpacks them into the app's
   folder on the first start. It contains the game: never publish or share it.
-- Without `GAME_FILES` the APK has no game files and says where to copy them:
-  `Android/data/io.github.tmcleroy.musclemarch/files/game` on the phone's storage (the contents of
-  `extracted/`).
 
 The app's folder (`Android/data/io.github.tmcleroy.musclemarch/files`) also holds `settings.ini`
 (a first start writes one with the Enhanced preset), the saves (`nand/`) and, for testing,
@@ -119,7 +120,11 @@ The app's folder (`Android/data/io.github.tmcleroy.musclemarch/files`) also hold
 variables above). The game's output goes to the system log: `adb logcat -s musclemarch SDL`.
 
 The APK is signed with the Android debug key unless `KEYSTORE`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`
-and `KEY_PASSWORD` name your own. Install with `adb install -r <apk>`, or copy it to the phone and
+and `KEY_PASSWORD` name your own, in the environment or as `NAME="value"` lines in
+`~/.config/musclemarch/android-signing.env` (`SIGNING=...` names another file). Android only
+installs an update over an app signed with the same key, so the published APKs all carry one
+release key, which lives outside the repository with whoever makes the releases: `RELEASE=1`
+(which `all.sh` sets) refuses to build without it or with game files packed in. Install with `adb install -r <apk>`, or copy it to the phone and
 open it (allow installing from that source).
 
 On the emulator (an arm64 image on Apple Silicon, started with `-gpu host`), `adb shell input tap`
