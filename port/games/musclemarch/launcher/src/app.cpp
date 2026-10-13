@@ -138,9 +138,29 @@ std::filesystem::path game_program_path() {
 #endif
 }
 
+// Where the player put the program: the folder with the launcher, the AppImage or the macOS app.
+std::filesystem::path program_folder() {
+    if (const char* image = std::getenv("APPIMAGE"); image && *image) {  // the base path is inside the read-only mount
+        return std::filesystem::path(image).parent_path();
+    }
+    std::filesystem::path folder = base_path();
+#ifdef __APPLE__
+    for (std::filesystem::path part = folder; part.has_relative_path(); part = part.parent_path()) {
+        if (part.extension() == ".app") {  // an app is not written into: its signature covers the contents
+            return part.parent_path();
+        }
+    }
+#endif
+    return folder;
+}
+
 std::filesystem::path player_folder() {
     if (const char* home = std::getenv("MUSCLE_MARCH_HOME"); home && *home) {  // tests: another folder
         return home;
+    }
+    std::error_code error;
+    if (std::filesystem::exists(program_folder() / "portable.txt", error)) {  // portable mode: nothing in the user folder
+        return program_folder() / "user";
     }
     char* path = SDL_GetPrefPath("", "Muscle March");
     std::filesystem::path folder = path ? std::filesystem::path(path) : base_path() / "user";

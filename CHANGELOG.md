@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Portable mode: with an empty `portable.txt` next to the launcher (the AppImage, `Muscle March.app`),
+  settings, saves and the game's files live in a `user` folder beside it and nothing is written to
+  your user folder. (#6)
+
 ## 0.1.0-beta.5
 
 - Android: on a first start the app asks for your own WAD and Wii common key and builds the game

@@ -97,6 +97,12 @@ Your settings, saves and the game's files built from your WAD live in your user 
 `~/Library/Application Support/Muscle March/` (macOS), `~/.local/share/Muscle March/`
 (Linux, Steam Deck) or `%APPDATA%\Muscle March\` (Windows). Delete it to start over.
 
+**Portable mode:** to keep everything in one place instead (a USB stick, several installs side by
+side), put an empty file named `portable.txt` next to the launcher (on Linux next to the AppImage,
+on macOS next to `Muscle March.app`). Settings, saves and the game's files then go in a `user`
+folder beside it and nothing is written to your user folder. Things already set up in your user
+folder aren't moved: copy its contents into `user` to keep them.
+
 ## Controls
 
 The game asks you to strike the pose shown on each wall before you reach it, and to shake the
