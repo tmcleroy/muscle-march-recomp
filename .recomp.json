@@ -1,0 +1,13 @@
+{
+  "$schema": "https://recomp.fyi/schema/v1.json",
+  "game": "Muscle March",
+  "wikidata": "Q11340490",
+  "system": "Wii",
+  "type": "recomp",
+  "original": {"region": "USA", "sha1": "ed99ce114d9793dbf21d5c9589d7947afebd4259"},
+  "project": "Muscle March Recomp",
+  "status": "released",
+  "targets": ["Windows", "Linux", "macOS", "Steam Deck", "Android"],
+  "toolchain": "wiiparty-recomp",
+  "maintainers": [{"name": "tmcleroy", "link": "https://github.com/tmcleroy"}]
+}
